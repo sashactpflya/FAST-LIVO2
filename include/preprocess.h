@@ -10,11 +10,9 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef PREPROCESS_H_
-#define PREPROCESS_H_
 
-#include "common_lib.h"
-#include <livox_ros_driver/CustomMsg.h>
+#pragma once
+// #include <livox_ros_driver/CustomMsg.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 using namespace std;
@@ -195,4 +193,3 @@ private:
 };
 typedef std::shared_ptr<Preprocess> PreprocessPtr;
 
-#endif // PREPROCESS_H_

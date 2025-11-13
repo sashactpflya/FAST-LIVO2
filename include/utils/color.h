@@ -1,6 +1,5 @@
-#ifndef COLOR_H
-#define COLOR_H
 
+#pragma once
 #define RESET       "\033[0m"
 #define BLACK       "\033[30m"             /* Black */
 #define RED         "\033[31m"             /* Red */
@@ -21,4 +20,3 @@
 #define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
 #define BOLDREDPURPLE   "\033[1m\033[95m"  /* Bold Red Purple */
 
-#endif // COLOR_H

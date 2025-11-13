@@ -1,6 +1,5 @@
-#ifndef SO3_MATH_H
-#define SO3_MATH_H
 
+#pragma once
 #include <Eigen/Core>
 #include <math.h>
 
@@ -86,4 +85,3 @@ template <typename T> Eigen::Matrix<T, 3, 1> RotMtoEuler(const Eigen::Matrix<T, 
   return ang;
 }
 
-#endif

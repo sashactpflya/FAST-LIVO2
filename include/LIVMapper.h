@@ -10,8 +10,8 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef LIV_MAPPER_H
-#define LIV_MAPPER_H
+
+#pragma once
 
 #include "IMU_Processing.h"
 #include "vio.h"
@@ -184,4 +184,3 @@ public:
   double aver_time_map_inre = 0;
   bool colmap_output_en = false;
 };
-#endif

@@ -10,8 +10,8 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef IMU_PROCESSING_H
-#define IMU_PROCESSING_H
+
+#pragma once
 
 #include <Eigen/Eigen>
 #include "common_lib.h"
@@ -87,4 +87,3 @@ private:
   bool exposure_estimate_en = true;
 };
 typedef std::shared_ptr<ImuProcess> ImuProcessPtr;
-#endif

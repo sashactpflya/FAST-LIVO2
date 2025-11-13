@@ -10,9 +10,7 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef LIVO_FEATURE_H_
-#define LIVO_FEATURE_H_
-
+#pragma once
 #include "visual_point.h"
 
 // A salient image region that is tracked across frames.
@@ -53,4 +51,3 @@ struct Feature
   }
 };
 
-#endif // LIVO_FEATURE_H_

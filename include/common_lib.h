@@ -10,9 +10,8 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef COMMON_LIB_H
-#define COMMON_LIB_H
 
+#pragma once
 #include <utils/so3_math.h>
 #include <utils/types.h>
 #include <utils/color.h>
@@ -241,4 +240,3 @@ auto set_pose6d(const double t, const Matrix<T, 3, 1> &a, const Matrix<T, 3, 1> 
   return move(rot_kp);
 }
 
-#endif

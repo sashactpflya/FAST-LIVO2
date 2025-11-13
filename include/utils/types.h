@@ -1,6 +1,5 @@
-#ifndef TYPES_H
-#define TYPES_H
 
+#pragma once
 #include <Eigen/Eigen>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -36,4 +35,3 @@ struct Pose6D
   double rot[9];      // the preintegrated rotation (global frame) at the Lidar origin
 };
 
-#endif

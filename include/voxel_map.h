@@ -10,9 +10,8 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef VOXEL_MAP_H_
-#define VOXEL_MAP_H_
 
+#pragma once
 #include "common_lib.h"
 #include <Eigen/Dense>
 #include <fstream>
@@ -256,4 +255,3 @@ private:
 };
 typedef std::shared_ptr<VoxelMapManager> VoxelMapManagerPtr;
 
-#endif // VOXEL_MAP_H_

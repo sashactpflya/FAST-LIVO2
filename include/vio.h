@@ -10,9 +10,8 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef VIO_H_
-#define VIO_H_
 
+#pragma once
 #include "voxel_map.h"
 #include "feature.h"
 #include <opencv2/imgproc/imgproc_c.h>
@@ -183,5 +182,3 @@ public:
   // pcl::VoxelGrid<PointType> downSizeFilter;
 };
 typedef std::shared_ptr<VIOManager> VIOManagerPtr;
-
-#endif // VIO_H_

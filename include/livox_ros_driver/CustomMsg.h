@@ -2,8 +2,6 @@
 // DO NOT EDIT!
 
 
-#ifndef LIVOX_ROS_DRIVER_MESSAGE_CUSTOMMSG_H
-#define LIVOX_ROS_DRIVER_MESSAGE_CUSTOMMSG_H
 
 
 #include <string>
@@ -289,4 +287,3 @@ struct Printer< ::livox_ros_driver::CustomMsg_<ContainerAllocator> >
 } // namespace message_operations
 } // namespace ros
 
-#endif // LIVOX_ROS_DRIVER_MESSAGE_CUSTOMMSG_H

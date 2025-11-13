@@ -10,8 +10,9 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#ifndef LIVO_FRAME_H_
-#define LIVO_FRAME_H_
+
+#pragma once
+#include "utils/types.h"
 
 #include <boost/noncopyable.hpp>
 #include <vikit/abstract_camera.h>
@@ -81,4 +82,3 @@ void createImgPyramid(const cv::Mat &img_level_0, int n_levels, ImgPyr &pyr);
 
 } // namespace frame_utils
 
-#endif // LIVO_FRAME_H_
