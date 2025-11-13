@@ -1,0 +1,3 @@
+[submodule "rpg_vikit"]
+	path = rpg_vikit
+	url = https://github.com/sashactpflya/rpg_vikit
