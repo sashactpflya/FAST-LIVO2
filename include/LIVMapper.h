@@ -12,13 +12,23 @@ which is included as part of this source code package.
 
 
 #pragma once
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/quaternion.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 
 #include "IMU_Processing.h"
 #include "vio.h"
 #include "preprocess.h"
-#include <cv_bridge/cv_bridge.h>
-#include <image_transport/image_transport.h>
-#include <nav_msgs/Path.h>
+#include <cv_bridge/cv_bridge.hpp>
+#include <image_transport/image_transport.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <vikit/camera_loader.h>
 
 class LIVMapper
@@ -63,6 +73,7 @@ public:
   template <typename T> void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
   template <typename T> Eigen::Matrix<T, 3, 1> pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi);
   cv::Mat getImageFromMsg(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg);
+  rclcpp::Time makeTimeFromSeconds(double seconds) const;
 
   std::mutex mtx_buffer, mtx_buffer_imu_prop;
   std::condition_variable sig_buffer;

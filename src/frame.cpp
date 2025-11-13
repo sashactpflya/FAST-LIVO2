@@ -10,7 +10,6 @@ This file is subject to the terms and conditions outlined in the 'LICENSE' file,
 which is included as part of this source code package.
 */
 
-#include <boost/bind.hpp>
 #include "feature.h"
 #include "frame.h"
 #include "visual_point.h"

@@ -13,7 +13,12 @@ which is included as part of this source code package.
 
 #pragma once
 // #include <livox_ros_driver/CustomMsg.h>
-#include <pcl_conversions/pcl_conversions.h>
+#include "utils/types.h"
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <pcl/conversions.h>
+#include <pcl/point_types.h>
+#include <pcl/impl/point_types.hpp>
 
 using namespace std;
 
