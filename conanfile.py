@@ -16,7 +16,7 @@ class FastLivo2Conan(ConanFile):
     default_options = {
         "with_ros": True,
         "with_openmp": True,
-        "with_mimalloc": False
+        "with_mimalloc": True
     }
 
     export_sources = (
@@ -35,14 +35,14 @@ class FastLivo2Conan(ConanFile):
         self.requires("boost/1.83.0")
         self.requires("sophus/1.22.10")
 
-        self.requires("pcl/1.13.1")
+        # self.requires("pcl/1.13.1") # PCL is compiled locally (to fix alignment issues)
         # self.requires("opencv/4.2.0")
 
         # if self.options.with_openmp:
         #     self.requires("openmp/11.0.0")
 
         if self.options.with_mimalloc:
-            self.requires("mimalloc/2.0.7")
+            self.requires("mimalloc/1.7.6")
 
     def generate(self):
         deps = CMakeDeps(self)
@@ -53,6 +53,14 @@ class FastLivo2Conan(ConanFile):
         tc.variables["WITH_OPENMP"] = self.options.with_openmp
         tc.variables["WITH_MIMALLOC"] = self.options.with_mimalloc
         tc.cache_variables["CMAKE_BUILD_TYPE"] = str(self.settings.build_type)
+        
+        # Enhanced debug symbols for better backtrace analysis
+        if self.settings.build_type == "Debug":
+            # Full debug info, no optimizations
+            tc.variables["CMAKE_CXX_FLAGS_DEBUG"] = "-O0 -g3 -ggdb -fno-omit-frame-pointer"
+        elif self.settings.build_type == "RelWithDebInfo":
+            # Debug info with optimizations, but preserve stack frames
+            tc.variables["CMAKE_CXX_FLAGS_RELWITHDEBINFO"] = "-O2 -g3 -ggdb -fno-omit-frame-pointer"
 
         tc.generate()
 

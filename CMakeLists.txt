@@ -7,8 +7,29 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Options
+set(FAST_OPT_DEFAULT ON)
+if(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+  set(FAST_OPT_DEFAULT OFF)
+endif()
+option(ENABLE_FAST_OPTIMIZATIONS "Enable arch-specific and loop optimizations (default ON for Release)" ${FAST_OPT_DEFAULT})
+
+set(VIO_OMP_DEFAULT ON)
+if(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+  set(VIO_OMP_DEFAULT OFF)
+endif()
+option(ENABLE_VIO_OPENMP "Enable OpenMP code paths (defines MP_EN/MP_PROC_NUM)" ${VIO_OMP_DEFAULT})
+set(VIO_OMP_THREADS "0" CACHE STRING "OpenMP thread count for VIO (0=auto)")
+
 option(WITH_OPENMP "Build with OpenMP support" ON)
-option(WITH_MIMALLOC "Build with mimalloc support" OFF)
+option(WITH_MIMALLOC "Build with mimalloc support" ON)
+
+# ASan + ROS 2: rclcpp/rmw are built without sized-delete support, so enabling
+# sized delete in our binaries triggers "new-delete-type-mismatch". Disable it
+# to match upstream toolchains.
+add_compile_options(-fsanitize=address -fno-omit-frame-pointer
+                    -fno-sized-deallocation)
+add_link_options(-fsanitize=address)
+# add_compile_options(-Wall -Wextra -Wpedantic -Werror) # @sashactpflya : too much error to be used rn :)
 
 if(EXISTS "${CMAKE_BINARY_DIR}/conan_toolchain.cmake")
   include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake)
@@ -23,44 +44,37 @@ message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 # Architecture-specific tuning (applied via target properties)
 set(FAST_LIVO_RELEASE_FLAGS "")
 set(FAST_LIVO_ARCH_DEFINES "")
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm|aarch64|ARM|AARCH64)")
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
-    set(FAST_LIVO_RELEASE_FLAGS "-mcpu=native -mtune=native -ffast-math")
-    message(STATUS "Using 64-bit ARM optimizations: ${FAST_LIVO_RELEASE_FLAGS}")
+if(ENABLE_FAST_OPTIMIZATIONS)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm|aarch64|ARM|AARCH64)")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+      set(FAST_LIVO_RELEASE_FLAGS "-mcpu=native -mtune=native -ffast-math")
+      message(STATUS "Using 64-bit ARM optimizations: ${FAST_LIVO_RELEASE_FLAGS}")
+    else()
+      set(FAST_LIVO_RELEASE_FLAGS "-mcpu=native -mtune=native -mfpu=neon -ffast-math")
+      message(STATUS "Using 32-bit ARM optimizations: ${FAST_LIVO_RELEASE_FLAGS}")
+    endif()
+    list(APPEND FAST_LIVO_ARCH_DEFINES ARM_ARCH)
   else()
-    set(FAST_LIVO_RELEASE_FLAGS "-mcpu=native -mtune=native -mfpu=neon -ffast-math")
-    message(STATUS "Using 32-bit ARM optimizations: ${FAST_LIVO_RELEASE_FLAGS}")
+    set(FAST_LIVO_RELEASE_FLAGS "-march=native -mtune=native -funroll-loops")
+    list(APPEND FAST_LIVO_ARCH_DEFINES X86_ARCH)
+    message(STATUS "Using x86 optimizations: ${FAST_LIVO_RELEASE_FLAGS}")
   endif()
-  list(APPEND FAST_LIVO_ARCH_DEFINES ARM_ARCH)
 else()
-  set(FAST_LIVO_RELEASE_FLAGS "-march=native -mtune=native -funroll-loops")
-  list(APPEND FAST_LIVO_ARCH_DEFINES X86_ARCH)
-  message(STATUS "Using x86 optimizations: ${FAST_LIVO_RELEASE_FLAGS}")
+  message(STATUS "Fast optimizations disabled (ENABLE_FAST_OPTIMIZATIONS=OFF)")
 endif()
 string(REPLACE " " ";" FAST_LIVO_RELEASE_FLAGS_LIST "${FAST_LIVO_RELEASE_FLAGS}")
 
-# Detect CPU core count for potential multithreading optimization
-# include(ProcessorCount)
-# ProcessorCount(N)
-# message(STATUS "Processor count: ${N}")
-
-# # Set the number of cores for multithreading
-# if(N GREATER 4)
-#   math(EXPR PROC_NUM "4")
-#   add_definitions(-DMP_EN -DMP_PROC_NUM=${PROC_NUM})
-#   message(STATUS "Multithreading enabled. Cores: ${PROC_NUM}")
-# elseif(N GREATER 1)
-#   math(EXPR PROC_NUM "${N}")
-#   add_definitions(-DMP_EN -DMP_PROC_NUM=${PROC_NUM})
-#   message(STATUS "Multithreading enabled. Cores: ${PROC_NUM}")
-# else()
-#   add_definitions(-DMP_PROC_NUM=1)
-#   message(STATUS "Single core detected. Multithreading disabled.")
-# endif()
-
 find_package(Eigen3 CONFIG REQUIRED)
-find_package(PCL CONFIG REQUIRED)
-find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs)
+find_package(PCL REQUIRED COMPONENTS common io filters segmentation) # Local, v1.13.1
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
+# Log PCL_INCLUDE_DIRS and PCL_LIBRARY_DIRS for debugging
+message(STATUS "PCL_INCLUDE_DIRS: ${PCL_INCLUDE_DIRS}")
+message(STATUS "PCL_LIBRARY_DIRS: ${PCL_LIBRARY_DIRS}")
+
+find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs) # Local
 find_package(Sophus CONFIG REQUIRED)
 find_package(Boost CONFIG REQUIRED COMPONENTS thread system)
 
@@ -85,7 +99,8 @@ find_package(rmw_fastrtps_cpp REQUIRED)
 find_package(image_transport REQUIRED)
 
 
-if(WITH_MIMALLOC)
+# Optional mimalloc
+if(1)
   find_package(mimalloc CONFIG QUIET)
   if(mimalloc_FOUND)
     message(STATUS "mimalloc found")
@@ -106,6 +121,26 @@ if(WITH_OPENMP)
   endif()
 endif()
 
+set(FAST_LIVO_MP_DEFINES "-DMP_PROC_NUM=1")
+if(ENABLE_VIO_OPENMP)
+  if(FAST_LIVO_OPENMP_TARGET STREQUAL "")
+    message(WARNING "ENABLE_VIO_OPENMP=ON but OpenMP is unavailable; falling back to single-thread")
+  else()
+    include(ProcessorCount)
+    ProcessorCount(N)
+    if(VIO_OMP_THREADS STREQUAL "0")
+      set(PROC_NUM ${N})
+    else()
+      set(PROC_NUM ${VIO_OMP_THREADS})
+    endif()
+    if(PROC_NUM LESS 1)
+      set(PROC_NUM 1)
+    endif()
+    set(FAST_LIVO_MP_DEFINES "-DMP_EN" "-DMP_PROC_NUM=${PROC_NUM}")
+    message(STATUS "VIO OpenMP enabled (threads: ${PROC_NUM})")
+  endif()
+endif()
+
 # Interface library for common dependencies
 add_library(fast_livo_interface INTERFACE)
 target_include_directories(fast_livo_interface INTERFACE
@@ -113,7 +148,7 @@ target_include_directories(fast_livo_interface INTERFACE
 )
 target_link_libraries(fast_livo_interface INTERFACE
     Eigen3::Eigen
-    PCL::PCL
+    pcl_common
     opencv_core opencv_imgproc opencv_imgcodecs
     Sophus::Sophus
     Boost::boost
@@ -126,9 +161,14 @@ target_include_directories(fast_livo_interface INTERFACE
 )
 
 # Common compiler definitions/options
+add_definitions(-DEIGEN_DONT_ALIGN_STATICALLY=1)
+add_definitions(-DEIGEN_MAX_ALIGN_BYTES=0)
+add_definitions(-DEIGEN_MAX_STATIC_ALIGN_BYTES=0)
+
 target_compile_definitions(fast_livo_interface INTERFACE
     ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/"
     ${FAST_LIVO_ARCH_DEFINES}
+    ${FAST_LIVO_MP_DEFINES}
 )
 if(FAST_LIVO_RELEASE_FLAGS_LIST)
   target_compile_options(fast_livo_interface INTERFACE

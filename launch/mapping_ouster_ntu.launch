@@ -1,15 +1,13 @@
 <launch>
-  <!-- Argument -->
   <arg name="rviz" default="true"/>
+  <arg name="gdb" default="false"/>
 
-  <!-- Noeud principal -->
-  <node pkg="fast_livo" exec="fastlivo_mapping" name="laserMapping" output="screen">
+  <node pkg="fast_livo" exec="fastlivo_mapping" name="fast_livo" output="screen" launch-prefix="$(if $(var gdb) 'gdb -ex run --args' '')">
     <param from="$(find-pkg-share fast_livo)/config/NTU_VIRAL.yaml"/>
     <param from="$(find-pkg-share fast_livo)/config/camera_NTU_VIRAL.yaml"/>
   </node>
 
-  <!-- Lancer RViz si demandé -->
   <group if="$(var rviz)">
-    <node pkg="rviz2" exec="rviz2" name="rviz" args="-d $(find-pkg-share fast_livo)/rviz_cfg/ntu_viral.rviz"/>
+    <node pkg="rviz2" exec="rviz2" name="rviz" args="-d $(find-pkg-share fast_livo)/rviz2/ntu_viral.rviz2"/>
   </group>
 </launch>
