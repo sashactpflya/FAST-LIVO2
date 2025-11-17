@@ -67,7 +67,7 @@ public:
                             const rclcpp::Time &stamp);
   void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped, const rclcpp::Time &stamp);
   void publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr &mavros_pose_publisher, const rclcpp::Time &stamp);
-  void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath, const rclcpp::Time &stamp);
+  void publish_path(const rclcpp::Time &stamp);
   void readParameters(const rclcpp::Node::SharedPtr &node);
   template <typename T> void set_posestamp(T &out);
   template <typename T> void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
@@ -77,6 +77,7 @@ public:
 
   std::mutex mtx_buffer, mtx_buffer_imu_prop;
   std::condition_variable sig_buffer;
+  std::thread spin_thread_;
 
   SLAM_MODE slam_mode_;
   std::unordered_map<VOXEL_LOCATION, VoxelOctoTree *> voxel_map;
@@ -140,7 +141,7 @@ public:
   vector<double> extrinT;
   vector<double> extrinR;
   vector<double> cameraextrinT;
-  vector<double> cameraextrinR;
+  std::vector<double> cameraextrinR;
   double IMG_POINT_COV;
 
   PointCloudXYZI::Ptr visual_sub_map;

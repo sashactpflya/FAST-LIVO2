@@ -1,4 +1,4 @@
-laserMapping:
+fast_livo:
   ros__parameters:
     common:
       img_topic: "/alphasense/cam0/image_raw"
@@ -93,7 +93,7 @@ laserMapping:
       pub_scan_num: 1
       blind_rgb_points: 0.0
     evo:
-      seq_name: exp09_cupola
+      seq_name: "exp11_lower_gallery"
       pose_output_en: true
     pcd_save:
       pcd_save_en: false
