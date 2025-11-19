@@ -239,26 +239,26 @@ void LIVMapper::initializeSubscribersAndPublishers(image_transport::ImageTranspo
       img_topic, high_queue_qos,
       std::bind(&LIVMapper::img_cbk, this, _1));
 
-  pubLaserCloudFullRes = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 100);
-  pubNormal = node_->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker", 100);
-  pubSubVisualMap = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_visual_sub_map_before", 100);
-  pubLaserCloudEffect = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_effected", 100);
-  pubLaserCloudMap = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/Laser_map", 100);
-  pubOdomAftMapped = node_->create_publisher<nav_msgs::msg::Odometry>("/aft_mapped_to_init", 10);
-  pubPath = node_->create_publisher<nav_msgs::msg::Path>("/path", 10);
-  plane_pub = node_->create_publisher<visualization_msgs::msg::Marker>("/planner_normal", 1);
-  voxel_pub = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/voxels", 1);
-  pubLaserCloudDyn = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/dyn_obj", 100);
-  pubLaserCloudDynRmed = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/dyn_obj_removed", 100);
-  pubLaserCloudDynDbg = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/dyn_obj_dbg_hist", 100);
-  mavros_pose_publisher = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/mavros/vision_pose/pose", 10);
-  pubImage = it.advertise("/rgb_img", 1);
-  pubImuPropOdom = node_->create_publisher<nav_msgs::msg::Odometry>("/LIVO2/imu_propagate", 10000);
+  pubLaserCloudFullRes = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/cloud_registered", 100);
+  pubNormal = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/livo2/visualization_marker", 100);
+  pubSubVisualMap = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/cloud_visual_sub_map_before", 100);
+  pubLaserCloudEffect = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/cloud_effected", 100);
+  pubLaserCloudMap = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/Laser_map", 100);
+  pubOdomAftMapped = node_->create_publisher<nav_msgs::msg::Odometry>("/livo2/aft_mapped_to_init", 10);
+  pubPath = node_->create_publisher<nav_msgs::msg::Path>("/livo2/path", 10);
+  plane_pub = node_->create_publisher<visualization_msgs::msg::Marker>("/livo2/planner_normal", 1);
+  voxel_pub = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/livo2/voxels", 1);
+  pubLaserCloudDyn = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/dyn_obj", 100);
+  pubLaserCloudDynRmed = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/dyn_obj_removed", 100);
+  pubLaserCloudDynDbg = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/dyn_obj_dbg_hist", 100);
+  mavros_pose_publisher = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/livo2/mavros/vision_pose/pose", 10);
+  pubImage = it.advertise("/livo2/rgb_img", 1);
+  pubImuPropOdom = node_->create_publisher<nav_msgs::msg::Odometry>("/livo2/LIVO2/imu_propagate", 10000);
   imu_prop_timer = node_->create_wall_timer(
       std::chrono::milliseconds(4),
       std::bind(&LIVMapper::imu_prop_callback, this));
   
-  voxelmap_manager->voxel_map_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/planes", 10000);
+  voxelmap_manager->voxel_map_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/livo2/planes", 10000);
   static_tf_timer_ = node_->create_wall_timer(
       std::chrono::seconds(10),
       std::bind(&LIVMapper::publish_static_pandar_tf, this));
