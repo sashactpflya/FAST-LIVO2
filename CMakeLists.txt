@@ -21,15 +21,35 @@ option(ENABLE_VIO_OPENMP "Enable OpenMP code paths (defines MP_EN/MP_PROC_NUM)" 
 set(VIO_OMP_THREADS "0" CACHE STRING "OpenMP thread count for VIO (0=auto)")
 
 option(WITH_OPENMP "Build with OpenMP support" ON)
-option(WITH_MIMALLOC "Build with mimalloc support" ON)
+option(WITH_MIMALLOC "Build with mimalloc support" OFF)
+# Re-enable detailed timing by default (can still be turned off with -DENABLE_PERFORMANCE_TIMING=OFF)
+option(ENABLE_PERFORMANCE_TIMING "Enable console performance timing output" FALSE)
+
+# Enable AddressSanitizer by default in Debug builds for memory debugging
+set(ASAN_DEFAULT OFF)
+if(CMAKE_BUILD_TYPE MATCHES "^Debug$")
+  set(ASAN_DEFAULT ON)
+endif()
+option(ENABLE_ASAN "Enable AddressSanitizer for memory debugging (causes 2-5x slowdown)" ${ASAN_DEFAULT})
+
+if(ENABLE_PERFORMANCE_TIMING)
+  add_compile_definitions(ENABLE_PERFORMANCE_TIMING)
+  message(STATUS "Performance timing output: ENABLED")
+else()
+  message(STATUS "Performance timing output: DISABLED (for real-time performance)")
+endif()
 
 # ASan + ROS 2: rclcpp/rmw are built without sized-delete support, so enabling
 # sized delete in our binaries triggers "new-delete-type-mismatch". Disable it
 # to match upstream toolchains.
-add_compile_options(-fsanitize=address -fno-omit-frame-pointer
-                    -fno-sized-deallocation)
-add_link_options(-fsanitize=address)
-# add_compile_options(-Wall -Wextra -Wpedantic -Werror) # @sashactpflya : too much error to be used rn :)
+if(ENABLE_ASAN)
+  add_compile_options(-fsanitize=address -fno-omit-frame-pointer
+                      -fno-sized-deallocation)
+  add_link_options(-fsanitize=address)
+  message(STATUS "AddressSanitizer: ENABLED (expect 2-5x slowdown)")
+else()
+  message(STATUS "AddressSanitizer: DISABLED (for maximum performance)")
+endif()
 
 if(EXISTS "${CMAKE_BINARY_DIR}/conan_toolchain.cmake")
   include(${CMAKE_BINARY_DIR}/conan_toolchain.cmake)
@@ -100,7 +120,7 @@ find_package(image_transport REQUIRED)
 
 
 # Optional mimalloc
-if(1)
+if(WITH_MIMALLOC)
   find_package(mimalloc CONFIG QUIET)
   if(mimalloc_FOUND)
     message(STATUS "mimalloc found")

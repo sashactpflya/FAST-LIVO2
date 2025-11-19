@@ -11,12 +11,14 @@ class FastLivo2Conan(ConanFile):
     options = {
         "with_ros": [True, False],
         "with_openmp": [True, False],
-        "with_mimalloc": [True, False]
+        "with_mimalloc": [True, False],
+        "enable_performance_timing": [True, False]
     }
     default_options = {
         "with_ros": True,
         "with_openmp": True,
-        "with_mimalloc": True
+        "with_mimalloc": True,
+        "enable_performance_timing": False
     }
 
     export_sources = (
@@ -52,6 +54,7 @@ class FastLivo2Conan(ConanFile):
         tc.variables["WITH_ROS"] = self.options.with_ros
         tc.variables["WITH_OPENMP"] = self.options.with_openmp
         tc.variables["WITH_MIMALLOC"] = self.options.with_mimalloc
+        tc.variables["ENABLE_PERFORMANCE_TIMING"] = self.options.enable_performance_timing
         tc.cache_variables["CMAKE_BUILD_TYPE"] = str(self.settings.build_type)
         
         # Enhanced debug symbols for better backtrace analysis
