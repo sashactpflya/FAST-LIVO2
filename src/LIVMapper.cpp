@@ -21,6 +21,7 @@ which is included as part of this source code package.
 #include <pcl/io/pcd_io.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <spdlog/spdlog.h>
+#include <tf2_ros/static_transform_broadcaster.h>
 
 LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
     : extT(0, 0, 0),
@@ -56,6 +57,20 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
   path.header.frame_id = "camera_init";
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
+  static_tf_broadcaster_ =
+      std::make_shared<tf2_ros::StaticTransformBroadcaster>(node_);
+
+  // precompute aft_mapped -> PandarXT-32 transform (fixed)
+  {
+    tf2::Quaternion lidar_q;
+    lidar_q.setW(0.0);
+    lidar_q.setX(-0.7071068);
+    lidar_q.setY(0.7071068);
+    lidar_q.setZ(0.0);
+    lidar_q.normalize();
+    aft_to_pandar_tf_.setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
+    aft_to_pandar_tf_.setRotation(lidar_q);
+  }
 }
 
 LIVMapper::~LIVMapper() {}
@@ -1334,13 +1349,14 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
   q.setZ(geoQuat.z);
   transform.setRotation(q);
 
+  // camera_init --> aft_mapped; store for zero-order hold publisher
   geometry_msgs::msg::TransformStamped transform_msg;
-  transform_msg.header.stamp = stamp;
-  transform_msg.header.frame_id = "camera_init";
-  transform_msg.child_frame_id = "aft_mapped";
   transform_msg.transform = tf2::toMsg(transform);
+  latest_tf_transform_ = transform_msg.transform;
+  latest_tf_time_ = stamp;
+  latest_tf_wall_time_ = node_->now();
+  latest_tf_valid_ = true;
 
-  tf_broadcaster_->sendTransform(transform_msg);
 
   if (pubOdomAftMapped) pubOdomAftMapped->publish(odomAftMapped);
 }
@@ -1360,7 +1376,57 @@ void LIVMapper::publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::Share
   msg_body_pose.header.frame_id = "camera_init";
   path.header.stamp = stamp;
   path.poses.push_back(msg_body_pose);
-  if (pubPath) pubPath->publish(path);
+  if (pubPath)
+    pubPath->publish(path);
+  else
+    spdlog::warn("Path publisher is nullptr.");
+}
+
+void LIVMapper::publish_static_pandar_tf() {
+  if (!static_tf_broadcaster_)
+    return;
+  geometry_msgs::msg::TransformStamped static_tf;
+  static_tf.header.stamp = node_->now();
+  static_tf.header.frame_id = "aft_mapped";
+  static_tf.child_frame_id = "PandarXT-32";
+  static_tf.transform.translation.x = 0.0;
+  static_tf.transform.translation.y = 0.0;
+  static_tf.transform.translation.z = 0.0;
+  static_tf.transform.rotation.x = -0.7071068;
+  static_tf.transform.rotation.y = 0.7071068;
+  static_tf.transform.rotation.z = 0.0;
+  static_tf.transform.rotation.w = 0.0;
+  static_tf_broadcaster_->sendTransform(static_tf);
+}
+
+void LIVMapper::publish_tf_hold() {
+  if (!latest_tf_valid_ || !tf_broadcaster_)
+    return;
+  const auto now = node_->now();
+  // Use zero-order hold from last odometry stamp, advancing by elapsed wall time
+  rclcpp::Duration delta = now - latest_tf_wall_time_;
+  rclcpp::Time stamped_time = latest_tf_time_ + delta;
+
+  // camera_init -> aft_mapped (latest held)
+  geometry_msgs::msg::TransformStamped transform_cam_to_aft;
+  transform_cam_to_aft.header.stamp = stamped_time;
+  transform_cam_to_aft.header.frame_id = "camera_init";
+  transform_cam_to_aft.child_frame_id = "aft_mapped";
+  transform_cam_to_aft.transform = latest_tf_transform_;
+  tf_broadcaster_->sendTransform(transform_cam_to_aft);
+
+  // PandarXT-32 -> camera_init using zero-order hold and fixed aft->pandar
+  tf2::Transform cam_to_aft_tf;
+  tf2::fromMsg(latest_tf_transform_, cam_to_aft_tf);
+  tf2::Transform cam_to_pandar_tf = cam_to_aft_tf * aft_to_pandar_tf_;
+  tf2::Transform pandar_to_cam_tf = cam_to_pandar_tf.inverse();
+
+  geometry_msgs::msg::TransformStamped transform_pandar_to_cam;
+  transform_pandar_to_cam.header.stamp = stamped_time;
+  transform_pandar_to_cam.header.frame_id = "PandarXT-32";
+  transform_pandar_to_cam.child_frame_id = "camera_init";
+  transform_pandar_to_cam.transform = tf2::toMsg(pandar_to_cam_tf);
+  tf_broadcaster_->sendTransform(transform_pandar_to_cam);
 }
 
 rclcpp::Time LIVMapper::makeTimeFromSeconds(double seconds) const

@@ -18,6 +18,7 @@ which is included as part of this source code package.
 #include <sensor_msgs/msg/image.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/quaternion.hpp>
+#include <geometry_msgs/msg/transform.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -167,6 +168,10 @@ public:
   nav_msgs::msg::Odometry odomAftMapped;
   geometry_msgs::msg::Quaternion geoQuat;
   geometry_msgs::msg::PoseStamped msg_body_pose;
+  geometry_msgs::msg::Transform latest_tf_transform_;
+  rclcpp::Time latest_tf_time_;
+  rclcpp::Time latest_tf_wall_time_;
+  bool latest_tf_valid_ = false;
 
   PreprocessPtr p_pre;
   ImuProcessPtr p_imu;
@@ -201,4 +206,11 @@ public:
   private:
     rclcpp::Node::SharedPtr node_;
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
+    rclcpp::TimerBase::SharedPtr static_tf_timer_;
+    rclcpp::TimerBase::SharedPtr tf_hold_timer_;
+    tf2::Transform aft_to_pandar_tf_;
+
+    void publish_static_pandar_tf();
+    void publish_tf_hold();
 };
