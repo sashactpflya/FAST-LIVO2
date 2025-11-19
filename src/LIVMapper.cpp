@@ -606,23 +606,49 @@ void LIVMapper::savePCD()
   }
 }
 
-void LIVMapper::run() 
+void LIVMapper::run()
 {
-  rclcpp::Rate rate(5000);
-  while (rclcpp::ok()) 
-  {
-    rclcpp::spin_some(node_); // CHECK IF OK
-    if (!sync_packages(LidarMeasures)) 
-    {
+//   // Spin callbacks in a separate thread to avoid executor overhead in main loop
+//   spin_thread_ = std::thread([this]() {
+//     rclcpp::spin(node_);
+//   });
+
+//   rclcpp::Rate rate(5000);
+
+//   while (rclcpp::ok()) {
+//     if (!sync_packages(LidarMeasures)) {
+//       rate.sleep();
+//       continue;
+//     }
+
+//     handleFirstFrame();
+//     processImu();
+//     stateEstimationAndMapping();
+//   }
+
+//   if (spin_thread_.joinable()) {
+//     spin_thread_.join();
+//   }
+//   savePCD();
+
+  // Spin callbacks in a separate thread to avoid executor overhead in main loop
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
+  executor.add_node(node_);
+  // WallRate avoids throwing if the ROS context shuts down while sleeping
+  rclcpp::WallRate rate(5000);
+
+  while (rclcpp::ok()) {
+    executor.spin_some(std::chrono::milliseconds(0));
+
+    if (!sync_packages(LidarMeasures)) {
+      if (!rclcpp::ok()) {
+        break;
+      }
       rate.sleep();
       continue;
     }
     handleFirstFrame();
-
     processImu();
-
-    // if (!p_imu->imu_time_init) continue;
-
     stateEstimationAndMapping();
   }
   savePCD();
