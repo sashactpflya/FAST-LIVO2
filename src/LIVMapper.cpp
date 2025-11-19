@@ -259,6 +259,12 @@ void LIVMapper::initializeSubscribersAndPublishers(image_transport::ImageTranspo
       std::bind(&LIVMapper::imu_prop_callback, this));
   
   voxelmap_manager->voxel_map_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/planes", 10000);
+  static_tf_timer_ = node_->create_wall_timer(
+      std::chrono::seconds(10),
+      std::bind(&LIVMapper::publish_static_pandar_tf, this));
+  tf_hold_timer_ = node_->create_wall_timer(
+      std::chrono::milliseconds(20),
+      std::bind(&LIVMapper::publish_tf_hold, this));
 }
 
 void LIVMapper::handleFirstFrame() 
