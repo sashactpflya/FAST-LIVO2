@@ -53,8 +53,24 @@ void loadVoxelConfig(rclcpp::Node::SharedPtr &node, VoxelMapConfig &voxel_config
   auto tmp = node->declare_parameter<std::vector<int64_t>>("lio.layer_init_num", default_layer_init);
   voxel_config.layer_init_num_ = std::vector<int>(tmp.begin(), tmp.end());
 
-  voxel_config.max_points_num_ = node->declare_parameter<int>("lio.max_points_num", 50);
-  voxel_config.max_iterations_ = node->declare_parameter<int>("lio.max_iterations", 5);
+  // ============================== FLYA - PATCH ==============================
+  if (voxel_config.layer_init_num_.size() <= voxel_config.max_layer_) {
+    const int fill_value = voxel_config.layer_init_num_.empty()
+                               ? 1
+                               : voxel_config.layer_init_num_.back();
+    voxel_config.layer_init_num_.resize(voxel_config.max_layer_ + 1,
+                                        fill_value);
+    spdlog::warn(
+        "lio.layer_init_num has {:d} entries but max_layer is {:d}. Resizing the "
+        "list to avoid out-of-range access.",
+        voxel_config.layer_init_num_.size(), voxel_config.max_layer_);
+  }
+  // ==========================================================================
+
+  voxel_config.max_points_num_ =
+      node->declare_parameter<int>("lio.max_points_num", 50);
+  voxel_config.max_iterations_ =
+      node->declare_parameter<int>("lio.max_iterations", 5);
 
   voxel_config.map_sliding_en = node->declare_parameter<bool>("local_map.map_sliding_en", false);
   voxel_config.half_map_size = node->declare_parameter<int>("local_map.half_map_size", 100);

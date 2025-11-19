@@ -93,7 +93,9 @@ public:
   double res_mean_last = 0.05;
   double gyr_cov = 0, acc_cov = 0, inv_expo_cov = 0;
   double blind_rgb_points = 0.0;
-  double last_timestamp_lidar = -1.0, last_timestamp_imu = -1.0, last_timestamp_img = -1.0;
+  bool colorize_map_en = true;
+  double last_timestamp_lidar = -1.0, last_timestamp_imu = -1.0,
+         last_timestamp_img = -1.0;
   double filter_size_surf_min = 0;
   double filter_size_pcd = 0;
   double _first_lidar_time = 0.0;
@@ -102,6 +104,7 @@ public:
   bool lidar_map_inited = false, pcd_save_en = false, pub_effect_point_en = false, pose_output_en = false, ros_driver_fix_en = false, hilti_en = false;
   int pcd_save_interval = -1, pcd_index = 0;
   int pub_scan_num = 1;
+  bool save_dense_map_en = true;
 
   StatesGroup imu_propagate, latest_ekf_state;
 

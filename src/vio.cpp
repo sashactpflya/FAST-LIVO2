@@ -214,11 +214,23 @@ void VIOManager::getImagePatch(cv::Mat img, V2D pc, float *patch_tmp, int level)
   const float w_ref_tr = subpix_u_ref * (1.0 - subpix_v_ref);
   const float w_ref_bl = (1.0 - subpix_u_ref) * subpix_v_ref;
   const float w_ref_br = subpix_u_ref * subpix_v_ref;
-  for (int x = 0; x < patch_size; x++)
-  {
-    uint8_t *img_ptr = (uint8_t *)img.data + (v_ref_i - patch_size_half * scale + x * scale) * width + (u_ref_i - patch_size_half * scale);
-    for (int y = 0; y < patch_size; y++, img_ptr += scale)
-    {
+
+  // ============================== FLYA - PATCH ==============================
+  // Avoid reading outside the image when the patch is near image borders.
+  const int img_height = img.rows;
+  const int img_width = img.cols;
+  const int patch_offset = patch_size_half * scale;
+  if (u_ref_i - patch_offset < 0 || u_ref_i + patch_offset + scale >= img_width ||
+      v_ref_i - patch_offset < 0 || v_ref_i + patch_offset + scale >= img_height) {
+    return;
+  }
+  // ==========================================================================
+
+  for (int x = 0; x < patch_size; x++) {
+    uint8_t *img_ptr = (uint8_t *)img.data +
+                       (v_ref_i - patch_size_half * scale + x * scale) * width +
+                       (u_ref_i - patch_size_half * scale);
+    for (int y = 0; y < patch_size; y++, img_ptr += scale) {
       patch_tmp[patch_size_total * level + x * patch_size + y] =
           w_ref_tl * img_ptr[0] + w_ref_tr * img_ptr[scale] + w_ref_bl * img_ptr[scale * width] + w_ref_br * img_ptr[scale * width + scale];
     }
@@ -1589,7 +1601,30 @@ void VIOManager::updateState(cv::Mat img, int level)
       float w_ref_bl = (1.0 - subpix_u_ref) * subpix_v_ref;
       float w_ref_br = subpix_u_ref * subpix_v_ref;
 
+  // ============================== FLYA - PATCH ==============================
+      // Guard index accesses into the image and stored patch to avoid
+      // overreads when a feature lies near the boundary or the pyramid level
+      // does not match the cached patch.
+      const int img_height = img.rows;
+      const int img_width = img.cols;
+      const int patch_offset = patch_size_half * scale;
+
+      // Ensure the full patch (and +/- scale offsets used below) stay inside the
+      // image; otherwise skip this point.
+      if (u_ref_i - patch_offset - scale < 0 ||
+          u_ref_i + patch_offset + scale >= img_width ||
+          v_ref_i - patch_offset - scale < 0 ||
+          v_ref_i + patch_offset + scale >= img_height) {
+        continue;
+      }
+
       vector<float> P = visual_submap->warp_patch[i];
+      const int patch_idx_base = patch_size_total * level;
+      if (patch_idx_base + patch_size_total > static_cast<int>(P.size())) {
+        continue;
+      }
+      // ======================================================================
+
       double inv_ref_expo = visual_submap->inv_expo_list[i];
       // ROS_ERROR("inv_ref_expo: %.3lf, state->inv_expo_time: %.3lf\n", inv_ref_expo, state->inv_expo_time);
 
@@ -1693,7 +1728,14 @@ void VIOManager::updateFrameState(StatesGroup state)
   M3D Rwi(state.rot_end);
   V3D Pwi(state.pos_end);
   Rcw = Rci * Rwi.transpose();
-  Pcw = -Rci * Rwi.transpose() * Pwi + Pci;
+
+  // ============================== FLYA - PATCH ==============================
+  // Due to possible noise/bias, the rotation matrix may not be perfectly orthogonal
+  Rcw = Sophus::SO3d::fitToSO3(Rcw).matrix(); // TODO: Check the exactness of this step
+  // ==========================================================================
+
+//   Pcw = -Rci * Rwi.transpose() * Pwi + Pci;
+
   new_frame_->T_f_w_ = SE3(Rcw, Pcw);
 }
 

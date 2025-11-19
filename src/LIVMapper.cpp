@@ -14,14 +14,16 @@ which is included as part of this source code package.
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <pcl/io/pcd_io.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/filter.h>
 #include <rclcpp/clock.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/transform_broadcaster.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl_conversions/pcl_conversions.h>
 #include <spdlog/spdlog.h>
 #include <tf2_ros/static_transform_broadcaster.h>
+#include "utils/color.h"
 
 LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
     : extT(0, 0, 0),
@@ -33,23 +35,23 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
   cameraextrinT.assign(3, 0.0);
   cameraextrinR.assign(9, 0.0);
 
-  p_pre.reset(new Preprocess());
-  p_imu.reset(new ImuProcess());
+  p_pre = std::make_shared<Preprocess>();
+  p_imu = std::make_shared<ImuProcess>();
 
   readParameters(node_);
   VoxelMapConfig voxel_config;
   loadVoxelConfig(node_, voxel_config);
 
-  visual_sub_map.reset(new PointCloudXYZI());
-  feats_undistort.reset(new PointCloudXYZI());
-  feats_down_body.reset(new PointCloudXYZI());
-  feats_down_world.reset(new PointCloudXYZI());
-  pcl_w_wait_pub.reset(new PointCloudXYZI());
-  pcl_wait_pub.reset(new PointCloudXYZI());
-  pcl_wait_save.reset(new PointCloudXYZRGB());
-  pcl_wait_save_intensity.reset(new PointCloudXYZI());
-  voxelmap_manager.reset(new VoxelMapManager(voxel_config, voxel_map));
-  vio_manager.reset(new VIOManager());
+  visual_sub_map = std::make_shared<PointCloudXYZI>();
+  feats_undistort = std::make_shared<PointCloudXYZI>();
+  feats_down_body = std::make_shared<PointCloudXYZI>();
+  feats_down_world = std::make_shared<PointCloudXYZI>();
+  pcl_w_wait_pub = std::make_shared<PointCloudXYZI>();
+  pcl_wait_pub = std::make_shared<PointCloudXYZI>();
+  pcl_wait_save = std::make_shared<PointCloudXYZRGB>();
+  pcl_wait_save_intensity = std::make_shared<PointCloudXYZI>();
+  voxelmap_manager = std::make_shared<VoxelMapManager>(voxel_config, voxel_map);
+  vio_manager = std::make_shared<VIOManager>();
   root_dir = ROOT_DIR;
   initializeFiles();
   initializeComponents();
@@ -124,6 +126,7 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   pcd_save_interval = node->declare_parameter<int>("pcd_save.interval", -1);
   pcd_save_en = node->declare_parameter<bool>("pcd_save.pcd_save_en", false);
   colmap_output_en = node->declare_parameter<bool>("pcd_save.colmap_output_en", false);
+  save_dense_map_en = node->declare_parameter<bool>("pcd_save.save_dense_map", true);
   filter_size_pcd = node->declare_parameter<double>("pcd_save.filter_size_pcd", 0.5);
   extrinT = node->declare_parameter<std::vector<double>>("extrin_calib.extrinsic_T", extrinT);
   extrinR = node->declare_parameter<std::vector<double>>("extrin_calib.extrinsic_R", extrinR);
@@ -133,6 +136,7 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   frame_cnt = node->declare_parameter<int>("debug.frame_cnt", 6);
 
   blind_rgb_points = node->declare_parameter<double>("publish.blind_rgb_points", 0.01);
+  colorize_map_en = node->declare_parameter<bool>("publish.colorize_map_en", true);
   pub_scan_num = node->declare_parameter<int>("publish.pub_scan_num", 1);
   pub_effect_point_en = node->declare_parameter<bool>("publish.pub_effect_point_en", false);
   dense_map_en = node->declare_parameter<bool>("publish.dense_map_en", false);
@@ -435,23 +439,17 @@ void LIVMapper::handleLIO()
     state_update_flg = true;
   }
 
-  if (pose_output_en) 
-  {
-    static bool pos_opend = false;
-    static int ocount = 0;
-    std::ofstream outFile, evoFile;
-    if (!pos_opend) 
-    {
-      evoFile.open(std::string(ROOT_DIR) + "Log/result/" + seq_name + ".txt", std::ios::out);
-      pos_opend = true;
-      if (!evoFile.is_open()) RCLCPP_ERROR(node_->get_logger(), "open fail\n");
-    } 
-    else 
-    {
-      evoFile.open(std::string(ROOT_DIR) + "Log/result/" + seq_name + ".txt", std::ios::app);
-      if (!evoFile.is_open()) RCLCPP_ERROR(node_->get_logger(), "open fail\n");
+  if (pose_output_en) {
+    static std::ofstream evoFile;
+    static bool pos_opened = false;
+    if (!pos_opened) {
+      evoFile.open(std::string(ROOT_DIR) + "Log/result/" + seq_name + ".txt",
+                   std::ios::out);
+      pos_opened = true;
+      if (!evoFile.is_open())
+        RCLCPP_ERROR(node_->get_logger(), "open fail\n");
+      evoFile << std::fixed;
     }
-    Eigen::Matrix4d outT;
     Eigen::Quaterniond q(_state.rot_end);
     evoFile << std::fixed;
     evoFile << LidarMeasures.last_lio_update_time << " " << _state.pos_end[0] << " " << _state.pos_end[1] << " " << _state.pos_end[2] << " "
@@ -498,10 +496,14 @@ void LIVMapper::handleLIO()
   }
   *pcl_w_wait_pub = *laserCloudWorld;
 
-  if (!img_en) publish_frame_world(pubLaserCloudFullRes, vio_manager, current_stamp);
-  if (pub_effect_point_en) publish_effect_world(pubLaserCloudEffect, voxelmap_manager->ptpl_list_, current_stamp);
-  if (voxelmap_manager->config_setting_.is_pub_plane_map_) voxelmap_manager->pubVoxelMap();
-  publish_path(pubPath, current_stamp);
+  if (!img_en)
+    publish_frame_world(pubLaserCloudFullRes, vio_manager, current_stamp);
+  if (pub_effect_point_en)
+    publish_effect_world(pubLaserCloudEffect, voxelmap_manager->ptpl_list_,
+                         current_stamp);
+  if (voxelmap_manager->config_setting_.is_pub_plane_map_)
+    voxelmap_manager->pubVoxelMap();
+  publish_path(current_stamp);
   publish_mavros(mavros_pose_publisher, current_stamp);
 
   frame_num++;
@@ -546,17 +548,28 @@ void LIVMapper::handleLIO()
             << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << " " << feats_undistort->points.size() << std::endl;
 }
 
-void LIVMapper::savePCD() 
-{
-  if (pcd_save_en && (pcl_wait_save->points.size() > 0 || pcl_wait_save_intensity->points.size() > 0) && pcd_save_interval < 0) 
-  {
-    std::string raw_points_dir = std::string(ROOT_DIR) + "Log/PCD/all_raw_points.pcd";
-    std::string downsampled_points_dir = std::string(ROOT_DIR) + "Log/PCD/all_downsampled_points.pcd";
+void LIVMapper::savePCD() {
+  const bool save_colorized = img_en && colorize_map_en;
+  const std::string pcd_suffix = save_colorized ? "_color" : "";
+  const bool has_colorized_points =
+      save_colorized && (pcl_wait_save->points.size() > 0);
+  const bool has_intensity_points =
+      !save_colorized && (pcl_wait_save_intensity->points.size() > 0);
+  if (pcd_save_en && (has_colorized_points || has_intensity_points) &&
+      pcd_save_interval < 0) {
+    
+    spdlog::info("Saving PCD files...");
+
+    std::string raw_points_dir =
+        std::string(ROOT_DIR) + "Log/PCD/all_raw_points" + pcd_suffix + ".pcd";
+    std::string downsampled_points_dir =
+        std::string(ROOT_DIR) + "Log/PCD/all_downsampled_points" + pcd_suffix +
+        ".pcd";
     pcl::PCDWriter pcd_writer;
 
-    if (img_en)
-    {
-      pcl::PointCloud<pcl::PointXYZRGB>::Ptr downsampled_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+    if (save_colorized) {
+      pcl::PointCloud<pcl::PointXYZRGB>::Ptr downsampled_cloud(
+          new pcl::PointCloud<pcl::PointXYZRGB>);
       pcl::VoxelGrid<pcl::PointXYZRGB> voxel_filter;
       voxel_filter.setInputCloud(pcl_wait_save);
       voxel_filter.setLeafSize(filter_size_pcd, filter_size_pcd, filter_size_pcd);
@@ -570,16 +583,27 @@ void LIVMapper::savePCD()
       std::cout << GREEN << "Downsampled point cloud data saved to: " << downsampled_points_dir 
                 << " with point count after filtering: " << downsampled_cloud->points.size() << RESET << std::endl;
 
-      pcd_writer.writeBinary(raw_points_dir,
-                             *pcl_wait_save); // Save the raw point cloud data
-      spdlog::info("Raw point cloud data saved to: {} with point count: {}",
-                   raw_points_dir, pcl_wait_save->points.size());
+      if (save_dense_map_en) {
+        pcd_writer.writeBinary(
+            raw_points_dir,
+            *pcl_wait_save); // Save the raw point cloud data
+        spdlog::info("Raw point cloud data saved to: {} with point count: {}",
+                     raw_points_dir, pcl_wait_save->points.size());
+        spdlog::info(
+            "{}[PCD] Raw colorized map export completed successfully.{}",
+            GREEN, RESET);
+      } else {
+        spdlog::info("Skipping raw colorized map export (pcd_save.save_dense_map=false).");
+      }
 
       pcd_writer.writeBinary(
           downsampled_points_dir,
           *downsampled_cloud); // Save the downsampled point cloud data
       spdlog::info("Downsampled point cloud data saved to: {} with point count after filtering: {}",
                    downsampled_points_dir, downsampled_cloud->points.size());
+      spdlog::info(
+          "{}[PCD] Downsampled colorized map export completed successfully.{}",
+          GREEN, RESET);
 
       if (colmap_output_en) {
         fout_points << "# 3D point list with one line of data per point\n";
@@ -596,12 +620,31 @@ void LIVMapper::savePCD()
                         << 0 << std::endl;
         }
       }
-    }
-    else
-    {      
-      pcd_writer.writeBinary(raw_points_dir, *pcl_wait_save_intensity);
-      spdlog::info("Raw point cloud data saved to: {} with point count: {}",
-                   raw_points_dir, pcl_wait_save_intensity->points.size());
+    } else {
+      PointCloudXYZI::Ptr downsampled_cloud(new PointCloudXYZI);
+      pcl::VoxelGrid<PointType> voxel_filter;
+      voxel_filter.setInputCloud(pcl_wait_save_intensity);
+      voxel_filter.setLeafSize(filter_size_pcd, filter_size_pcd,
+                               filter_size_pcd);
+      voxel_filter.filter(*downsampled_cloud);
+
+      if (save_dense_map_en) {
+        pcd_writer.writeBinary(raw_points_dir, *pcl_wait_save_intensity);
+        spdlog::info("Raw point cloud data saved to: {} with point count: {}",
+                     raw_points_dir, pcl_wait_save_intensity->points.size());
+        spdlog::info("{}[PCD] Intensity map export completed successfully.{}",
+                     GREEN, RESET);
+      } else {
+        spdlog::info(
+            "Skipping raw intensity map export (pcd_save.save_dense_map=false).");
+      }
+
+      pcd_writer.writeBinary(downsampled_points_dir, *downsampled_cloud);
+      spdlog::info("Downsampled point cloud data saved to: {} with point count after filtering: {}",
+                   downsampled_points_dir, downsampled_cloud->points.size());
+      spdlog::info(
+          "{}[PCD] Downsampled intensity map export completed successfully.{}",
+          GREEN, RESET);
     }
   }
 }
@@ -721,7 +764,7 @@ void LIVMapper::imu_prop_callback()
     posi = imu_propagate.pos_end;
     vel_i = imu_propagate.vel_end;
     q = Eigen::Quaterniond(imu_propagate.rot_end);
-    imu_prop_odom.header.frame_id = "world";
+    imu_prop_odom.header.frame_id = "camera_init";
     imu_prop_odom.header.stamp = newest_imu.header.stamp;
     imu_prop_odom.pose.pose.position.x = posi.x();
     imu_prop_odom.pose.pose.position.y = posi.y();
@@ -863,31 +906,42 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 {
   if (!imu_en) return;
 
-  if (last_timestamp_lidar < 0.0) return;
-  // ROS_INFO("get imu at time: %.6f", msg_in->header.stamp.toSec());
+  if (last_timestamp_lidar < 0.0)
+    return;
   sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
+ 
+  // Apply IMU time offset
+  double timestamp = rclcpp::Time(msg->header.stamp).seconds() + imu_time_offset;
 
-  rclcpp::Time t = msg->header.stamp;
-  t = t - rclcpp::Duration::from_seconds(imu_time_offset);
-  msg->header.stamp = t;
-
-  double timestamp = rclcpp::Time(msg->header.stamp).seconds();
-
-  if (fabs(last_timestamp_lidar - timestamp) > 0.5 && (!ros_driver_fix_en))
-  {
-    spdlog::warn("IMU and LiDAR not synced! delta time: {:.4f}", last_timestamp_lidar - timestamp);
+  // Check for large time difference (potential desync)
+  if (fabs(last_timestamp_lidar - timestamp) > 0.5 && (!ros_driver_fix_en)) {
+    spdlog::warn("IMU and LiDAR not synced! delta time: {:.4f}", 
+                 last_timestamp_lidar - timestamp);
   }
 
-  if (ros_driver_fix_en) timestamp += std::round(last_timestamp_lidar - timestamp);
-  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(timestamp*1e9));
+  // [@sashactpflya] Fixed: Improved ros_driver_fix to avoid drift
+  // Only apply correction if ros_driver_fix is enabled AND difference is significant
+  if (ros_driver_fix_en) {
+    double time_diff = last_timestamp_lidar - timestamp;
+    // Only fix if the drift is more than 0.1s (likely a driver bug)
+    if (fabs(time_diff) > 0.1) {
+      double correction = std::round(time_diff);
+      timestamp += correction;
+      spdlog::debug("Applied ros_driver_fix correction: {:.4f}s", correction);
+    }
+  }
+  
+  // Update message timestamp
+  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(timestamp * 1e9));
 
   mtx_buffer.lock();
 
-  if (last_timestamp_imu > 0.0 && timestamp < last_timestamp_imu)
-  {
+  // Check for time going backwards
+  if (last_timestamp_imu > 0.0 && timestamp < last_timestamp_imu) {
     mtx_buffer.unlock();
     sig_buffer.notify_all();
-    SPDLOG_ERROR("imu loop back, offset: %lf \n", last_timestamp_imu - timestamp);
+    spdlog::error("IMU loop back, offset: {:.4f}", 
+                  last_timestamp_imu - timestamp);
     return;
   }
 
@@ -1225,13 +1279,16 @@ void LIVMapper::publish_img_rgb(const image_transport::Publisher &pubImage, VIOM
   pubImage.publish(out_msg.toImageMsg());
 }
 
-void LIVMapper::publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubLaserCloudFullRes, VIOManagerPtr vio_manager,
-                                    const rclcpp::Time &stamp)
-{
-  if (pcl_w_wait_pub->empty()) return;
+void LIVMapper::publish_frame_world(
+    const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+        &pubLaserCloudFullRes,
+    VIOManagerPtr vio_manager, const rclcpp::Time &stamp) {
+  if (pcl_w_wait_pub->empty())
+    return;
+  const bool do_colorize = img_en && colorize_map_en;
+  const std::string pcd_suffix = do_colorize ? "_color" : "";
   PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB());
-  if (img_en)
-  {
+  if (do_colorize) {
     static int pub_num = 1;
     *pcl_wait_pub += *pcl_w_wait_pub;
     if(pub_num == pub_scan_num)
@@ -1277,8 +1334,7 @@ void LIVMapper::publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::Po
 
   /*** Publish Frame ***/
   sensor_msgs::msg::PointCloud2 laserCloudmsg;
-  if (img_en)
-  {
+  if (do_colorize) {
     // cout << "RGB pointcloud size: " << laserCloudWorldRGB->size() << endl;
     pcl::toROSMsg(*laserCloudWorldRGB, laserCloudmsg);
   }
@@ -1299,8 +1355,7 @@ void LIVMapper::publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::Po
     PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
     static int scan_wait_num = 0;
 
-    if (img_en)
-    {
+    if (do_colorize) {
       *pcl_wait_save += *laserCloudWorldRGB;
     }
     else
@@ -1312,7 +1367,8 @@ void LIVMapper::publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::Po
     if ((pcl_wait_save->size() > 0 || pcl_wait_save_intensity->size() > 0) && pcd_save_interval > 0 && scan_wait_num >= pcd_save_interval)
     {
       pcd_index++;
-      string all_points_dir(string(string(ROOT_DIR) + "Log/PCD/") + to_string(pcd_index) + string(".pcd"));
+      string all_points_dir(string(string(ROOT_DIR) + "Log/PCD/") +
+                            to_string(pcd_index) + pcd_suffix + string(".pcd"));
       pcl::PCDWriter pcd_writer;
       if (pcd_save_en) {
         spdlog::info("Current scan saved to /PCD/{}", all_points_dir);
@@ -1334,7 +1390,8 @@ void LIVMapper::publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::Po
       }
     }
   }
-  if(laserCloudWorldRGB->size() > 0)  PointCloudXYZI().swap(*pcl_wait_pub); 
+  if (do_colorize && laserCloudWorldRGB->size() > 0)
+    PointCloudXYZI().swap(*pcl_wait_pub);
   PointCloudXYZI().swap(*pcl_w_wait_pub);
 }
 
@@ -1419,8 +1476,7 @@ void LIVMapper::publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseS
   if (mavros_pose_publisher) mavros_pose_publisher->publish(msg_body_pose);
 }
 
-void LIVMapper::publish_path(const rclcpp::Time &stamp)
-{
+void LIVMapper::publish_path(const rclcpp::Time &stamp) {
   set_posestamp(msg_body_pose.pose);
   msg_body_pose.header.stamp = stamp;
   msg_body_pose.header.frame_id = "camera_init";
