@@ -108,7 +108,7 @@ void ImuProcess::IMU_init(const MeasureGroup &meas, StatesGroup &state_inout, in
 {
   /** 1. initializing the gravity, gyro bias, acc and gyro covariance
    ** 2. normalize the acceleration measurenments to unit gravity **/
-  SPDLOG_INFO("IMU Initializing: {:.1f} %", double(N) / MAX_INI_COUNT * 100);
+  spdlog::info("IMU Initializing: {:.1f} %", double(N) / MAX_INI_COUNT * 100);
   V3D cur_acc, cur_gyr;
 
   if (b_first_frame)
@@ -576,13 +576,17 @@ void ImuProcess::Process2(LidarMeasureGroup &lidar_meas, StatesGroup &stat, Poin
     {
       // cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
       imu_need_init = false;
-      SPDLOG_INFO("IMU Initials: Gravity: {:.4f} {:.4f} {:.4f} {:.4f}; acc covarience: "
-                  "{:.8f} {:.8f} {:.8f}; gry covarience: {:.8f} {:.8f} {:.8f}",
-                  stat.gravity[0], stat.gravity[1], stat.gravity[2], mean_acc.norm(), cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1],
-                  cov_gyr[2]);
-      SPDLOG_INFO("IMU Initials: ba covarience: {:.8f} {:.8f} {:.8f}; bg covarience: "
-                  "{:.8f} {:.8f} {:.8f}",
-                  cov_bias_acc[0], cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2]);
+      spdlog::info(
+          "IMU Initials: Gravity: {:.4f} {:.4f} {:.4f} {:.4f}; acc covarience: "
+          "{:.8f} {:.8f} {:.8f}; gry covarience: {:.8f} {:.8f} {:.8f}",
+          stat.gravity[0], stat.gravity[1], stat.gravity[2], mean_acc.norm(),
+          cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1],
+          cov_gyr[2]);
+      spdlog::info(
+          "IMU Initials: ba covarience: {:.8f} {:.8f} {:.8f}; bg covarience: "
+          "{:.8f} {:.8f} {:.8f}",
+          cov_bias_acc[0], cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0],
+          cov_bias_gyr[1], cov_bias_gyr[2]);
       fout_imu.open(DEBUG_FILE_DIR("imu.txt"), ios::out);
     }
 

@@ -1842,12 +1842,15 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   // printf("\033[1;32m[ VIO time ]: current frame: updateReferencePatch time: %.6lf secs.\033[0m\n", t7 - t6);
   // printf("\033[1;32m[ VIO time ]: current total time: %.6lf, average total time: %.6lf secs.\033[0m\n", t7 - t1 - (t5 - t4), ave_total);
 
-  // ave_build_residual_time = ave_build_residual_time * (frame_count - 1) / frame_count + (t2 - t1) / frame_count;
-  // ave_ekf_time = ave_ekf_time * (frame_count - 1) / frame_count + (t3 - t2) / frame_count;
- 
-  // cout << BLUE << "ave_build_residual_time: " << ave_build_residual_time << RESET << endl;
-  // cout << BLUE << "ave_ekf_time: " << ave_ekf_time << RESET << endl;
-  
+  // ave_build_residual_time = ave_build_residual_time * (frame_count - 1) /
+  // frame_count + (t2 - t1) / frame_count; ave_ekf_time = ave_ekf_time *
+  // (frame_count - 1) / frame_count + (t3 - t2) / frame_count;
+
+  // cout << BLUE << "ave_build_residual_time: " << ave_build_residual_time <<
+  // RESET << endl; cout << BLUE << "ave_ekf_time: " << ave_ekf_time << RESET <<
+  // endl;
+
+#ifdef ENABLE_PERFORMANCE_TIMING
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
   printf("\033[1;34m|                         VIO Time                            |\033[0m\n");
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
@@ -1866,6 +1869,7 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Current Total Time", t7 - t1 - (t5 - t4));
   printf("\033[1;32m| %-29s | %-27lf |\033[0m\n", "Average Total Time", ave_total);
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+#endif
 
   // std::string text = std::to_string(int(1 / (t7 - t1 - (t5 - t4)))) + " HZ";
   // cv::Point2f origin;

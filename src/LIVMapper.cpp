@@ -268,15 +268,13 @@ void LIVMapper::handleFirstFrame()
     _first_lidar_time = LidarMeasures.last_lio_update_time;
     p_imu->first_lidar_time = _first_lidar_time; // Only for IMU data log
     is_first_frame = true;
-    cout << "FIRST LIDAR FRAME!" << endl;
+    spdlog::info("FIRST LIDAR FRAME!");
   }
 }
 
-void LIVMapper::gravityAlignment() 
-{
-  if (!p_imu->imu_need_init && !gravity_align_finished) 
-  {
-    std::cout << "Gravity Alignment Starts" << std::endl;
+void LIVMapper::gravityAlignment() {
+  if (!p_imu->imu_need_init && !gravity_align_finished) {
+    spdlog::info("Gravity Alignment Starts");
     V3D ez(0, 0, -1), gz(_state.gravity);
     Quaterniond G_q_I0 = Quaterniond::FromTwoVectors(gz, ez);
     M3D G_R_I0 = G_q_I0.toRotationMatrix();
@@ -286,7 +284,7 @@ void LIVMapper::gravityAlignment()
     _state.vel_end = G_R_I0 * _state.vel_end;
     _state.gravity = G_R_I0 * _state.gravity;
     gravity_align_finished = true;
-    std::cout << "Gravity Alignment Finished" << std::endl;
+    spdlog::info("Gravity Alignment Finished");
   }
 }
 
@@ -327,20 +325,22 @@ void LIVMapper::handleVIO()
 {
   const rclcpp::Time current_stamp = makeTimeFromSeconds(LidarMeasures.last_lio_update_time);
   euler_cur = RotMtoEuler(_state.rot_end);
+#ifdef ENABLE_PERFORMANCE_TIMING
   fout_pre << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
             << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
             << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << std::endl;
-    
-  if (pcl_w_wait_pub->empty() || (pcl_w_wait_pub == nullptr)) 
+#endif
+
+  if (!pcl_w_wait_pub || pcl_w_wait_pub->empty())
   {
-    std::cout << "[ VIO ] No point!!!" << std::endl;
+    spdlog::info("[ VIO ] No point!!!");
     return;
   }
-    
-  std::cout << "[ VIO ] Raw feature num: " << pcl_w_wait_pub->points.size() << std::endl;
 
-  if (fabs((LidarMeasures.last_lio_update_time - _first_lidar_time) - plot_time) < (frame_cnt / 2 * 0.1)) 
-  {
+  spdlog::info("[ VIO ] Raw feature num: {:d}", pcl_w_wait_pub->points.size());
+
+  if (fabs((LidarMeasures.last_lio_update_time - _first_lidar_time) -
+           plot_time) < (frame_cnt / 2 * 0.1)) {
     vio_manager->plot_flag = true;
   } 
   else 
@@ -386,10 +386,11 @@ void LIVMapper::handleLIO()
   fout_pre << setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
            << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
            << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << endl;
-           
-  if (feats_undistort->empty() || (feats_undistort == nullptr)) 
-  {
-    std::cout << "[ LIO ]: No point!!!" << std::endl;
+
+  // [@sashactpflya] Changed: The order of the following two checks is swapped to
+  // avoid potential dereferencing of a null pointer.
+  if (!feats_undistort || feats_undistort->empty()) {
+    spdlog::info("[ LIO ]: No point!!!");
     return;
   }
 
@@ -471,7 +472,7 @@ void LIVMapper::handleLIO()
     voxelmap_manager->pv_list_[i].var = var;
   }
   voxelmap_manager->UpdateVoxelMap(voxelmap_manager->pv_list_);
-  std::cout << "[ LIO ] Update Voxel Map" << std::endl;
+  spdlog::info("[ LIO ] Update Voxel Map");
   _pv_list = voxelmap_manager->pv_list_;
   
   double t4 = omp_get_wtime();
@@ -508,14 +509,22 @@ void LIVMapper::handleLIO()
   //         "[ mapping time ]: average: icp: %0.6f construct H: %0.6f, total: %0.6f \n",
   //         t_prop - t0, t1 - t_prop, match_time, solve_time, t3 - t1, t5 - t3, t5 - t0, aver_time_icp, aver_time_const_H_time, aver_time_consu);
 
-  // printf("\033[1;36m[ LIO mapping time ]: current scan: icp: %0.6f secs, map incre: %0.6f secs, total: %0.6f secs.\033[0m\n"
-  //         "\033[1;36m[ LIO mapping time ]: average: icp: %0.6f secs, map incre: %0.6f secs, total: %0.6f secs.\033[0m\n",
-  //         t2 - t1, t4 - t3, t4 - t0, aver_time_icp, aver_time_map_inre, aver_time_consu);
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-  printf("\033[1;34m|                         LIO Mapping Time                    |\033[0m\n");
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
-  printf("\033[1;34m| %-29s | %-27s |\033[0m\n", "Algorithm Stage", "Time (secs)");
-  printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+  // printf("\033[1;36m[ LIO mapping time ]: current scan: icp: %0.6f secs, map
+  // incre: %0.6f secs, total: %0.6f secs.\033[0m\n"
+  //         "\033[1;36m[ LIO mapping time ]: average: icp: %0.6f secs, map
+  //         incre: %0.6f secs, total: %0.6f secs.\033[0m\n", t2 - t1, t4 - t3,
+  //         t4 - t0, aver_time_icp, aver_time_map_inre, aver_time_consu);
+#ifdef ENABLE_PERFORMANCE_TIMING
+  printf("\033[1;34m+----------------------------------------------------------"
+         "---+\033[0m\n");
+  printf("\033[1;34m|                         LIO Mapping Time                 "
+         "   |\033[0m\n");
+  printf("\033[1;34m+----------------------------------------------------------"
+         "---+\033[0m\n");
+  printf("\033[1;34m| %-29s | %-27s |\033[0m\n", "Algorithm Stage",
+         "Time (secs)");
+  printf("\033[1;34m+----------------------------------------------------------"
+         "---+\033[0m\n");
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "DownSample", t_down - t0);
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "ICP", t2 - t1);
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "updateVoxelMap", t4 - t3);
@@ -523,6 +532,7 @@ void LIVMapper::handleLIO()
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "Current Total Time", t4 - t0);
   printf("\033[1;36m| %-29s | %-27f |\033[0m\n", "Average Total Time", aver_time_consu);
   printf("\033[1;34m+-------------------------------------------------------------+\033[0m\n");
+#endif
 
   euler_cur = RotMtoEuler(_state.rot_end);
   fout_out << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
@@ -554,8 +564,18 @@ void LIVMapper::savePCD()
       std::cout << GREEN << "Downsampled point cloud data saved to: " << downsampled_points_dir 
                 << " with point count after filtering: " << downsampled_cloud->points.size() << RESET << std::endl;
 
-      if(colmap_output_en)
-      {
+      pcd_writer.writeBinary(raw_points_dir,
+                             *pcl_wait_save); // Save the raw point cloud data
+      spdlog::info("Raw point cloud data saved to: {} with point count: {}",
+                   raw_points_dir, pcl_wait_save->points.size());
+
+      pcd_writer.writeBinary(
+          downsampled_points_dir,
+          *downsampled_cloud); // Save the downsampled point cloud data
+      spdlog::info("Downsampled point cloud data saved to: {} with point count after filtering: {}",
+                   downsampled_points_dir, downsampled_cloud->points.size());
+
+      if (colmap_output_en) {
         fout_points << "# 3D point list with one line of data per point\n";
         fout_points << "#  POINT_ID, X, Y, Z, R, G, B, ERROR\n";
         for (size_t i = 0; i < downsampled_cloud->size(); ++i) 
@@ -574,8 +594,8 @@ void LIVMapper::savePCD()
     else
     {      
       pcd_writer.writeBinary(raw_points_dir, *pcl_wait_save_intensity);
-      std::cout << GREEN << "Raw point cloud data saved to: " << raw_points_dir 
-                << " with point count: " << pcl_wait_save_intensity->points.size() << RESET << std::endl;
+      spdlog::info("Raw point cloud data saved to: {} with point count: {}",
+                   raw_points_dir, pcl_wait_save_intensity->points.size());
     }
   }
 }
@@ -823,7 +843,7 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 
   if (fabs(last_timestamp_lidar - timestamp) > 0.5 && (!ros_driver_fix_en))
   {
-    SPDLOG_WARN("IMU and LiDAR not synced! delta time: %lf .\n", last_timestamp_lidar - timestamp);
+    spdlog::warn("IMU and LiDAR not synced! delta time: {:.4f}", last_timestamp_lidar - timestamp);
   }
 
   if (ros_driver_fix_en) timestamp += std::round(last_timestamp_lidar - timestamp);
@@ -839,14 +859,11 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
     return;
   }
 
-  // if (last_timestamp_imu > 0.0 && timestamp > last_timestamp_imu + 0.2)
-  // {
-
-  //   ROS_WARN("imu time stamp Jumps %0.4lf seconds \n", timestamp - last_timestamp_imu);
-  //   mtx_buffer.unlock();
-  //   sig_buffer.notify_all();
-  //   return;
-  // }
+  // Check for unreasonable time jumps
+  if (last_timestamp_imu > 0.0 && (timestamp - last_timestamp_imu) > 0.2) {
+    spdlog::warn("IMU timestamp jump: {:.4f}s", timestamp - last_timestamp_imu);
+    // Don't reject, but warn
+  }
 
   last_timestamp_imu = timestamp;
 
@@ -890,13 +907,14 @@ void LIVMapper::img_cbk(const sensor_msgs::msg::Image::ConstSharedPtr &msg_in)
   }
   // double msg_header_time =  msg->header.stamp.toSec();
   double msg_header_time = rclcpp::Time(msg->header.stamp).seconds() + img_time_offset;
-  if (abs(msg_header_time - last_timestamp_img) < 0.001) return;
-  SPDLOG_INFO("Get image, its header time: %.6f", msg_header_time);
-  if (last_timestamp_lidar < 0) return;
+  if (abs(msg_header_time - last_timestamp_img) < 0.001)
+    return;
+  spdlog::info("Get image, its header time: {:.6f}", msg_header_time);
+  if (last_timestamp_lidar < 0)
+    return;
 
-  if (msg_header_time < last_timestamp_img)
-  {
-    SPDLOG_ERROR("image loop back. \n");
+  if (msg_header_time < last_timestamp_img) {
+    spdlog::error("image loop back. \n");
     return;
   }
 
@@ -906,7 +924,7 @@ void LIVMapper::img_cbk(const sensor_msgs::msg::Image::ConstSharedPtr &msg_in)
 
   if (img_time_correct - last_timestamp_img < 0.02)
   {
-    SPDLOG_WARN("Image need Jumps: %.6f", img_time_correct);
+    spdlog::warn("Image need Jumps: {:.6f}", img_time_correct);
     mtx_buffer.unlock();
     sig_buffer.notify_all();
     return;
@@ -1011,7 +1029,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
       {
         img_buffer.pop_front();
         img_time_buffer.pop_front();
-        SPDLOG_ERROR("[ Data Cut ] Throw one image frame! \n");
+        spdlog::error("[ Data Cut ] Throw one image frame! \n");
         return false;
       }
 
@@ -1161,7 +1179,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
     return false;
   }
   }
-  SPDLOG_ERROR("out sync");
+  spdlog::error("out sync");
 }
 
 void LIVMapper::publish_img_rgb(const image_transport::Publisher &pubImage, VIOManagerPtr vio_manager, const rclcpp::Time &stamp)
@@ -1264,12 +1282,12 @@ void LIVMapper::publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::Po
       pcd_index++;
       string all_points_dir(string(string(ROOT_DIR) + "Log/PCD/") + to_string(pcd_index) + string(".pcd"));
       pcl::PCDWriter pcd_writer;
-      if (pcd_save_en)
-      {
-        cout << "current scan saved to /PCD/" << all_points_dir << endl;
-        if (img_en)
-        {
-          pcd_writer.writeBinary(all_points_dir, *pcl_wait_save); // pcl::io::savePCDFileASCII(all_points_dir, *pcl_wait_save);
+      if (pcd_save_en) {
+        spdlog::info("Current scan saved to /PCD/{}", all_points_dir);
+        if (do_colorize) {
+          pcd_writer.writeBinary(all_points_dir,
+                                 *pcl_wait_save); // pcl::io::savePCDFileASCII(all_points_dir,
+                                                  // *pcl_wait_save);
           PointCloudXYZRGB().swap(*pcl_wait_save);
         }
         else
@@ -1369,7 +1387,7 @@ void LIVMapper::publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseS
   if (mavros_pose_publisher) mavros_pose_publisher->publish(msg_body_pose);
 }
 
-void LIVMapper::publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr &pubPath, const rclcpp::Time &stamp)
+void LIVMapper::publish_path(const rclcpp::Time &stamp)
 {
   set_posestamp(msg_body_pose.pose);
   msg_body_pose.header.stamp = stamp;

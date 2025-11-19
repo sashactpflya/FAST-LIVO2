@@ -12,6 +12,8 @@ which is included as part of this source code package.
 
 #include "voxel_map.h"
 
+#include <spdlog/spdlog.h>
+#include <tf2/LinearMath/Quaternion.h>
 #include <tf2/convert.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -935,7 +937,7 @@ void VoxelMapManager::mapSliding()
 {
   if((position_last_ - last_slide_position).norm() < config_setting_.sliding_thresh)
   {
-    std::cout<<RED<<"[DEBUG]: Last sliding length "<<(position_last_ - last_slide_position).norm()<<RESET<<"\n";
+    spdlog::debug("[ VOXEL MAP ]: Last sliding length {:.6f}", (position_last_ - last_slide_position).norm());
     return;
   }
 
@@ -953,13 +955,14 @@ void VoxelMapManager::mapSliding()
                     (int64_t)loc_xyz[1] + config_setting_.half_map_size, (int64_t)loc_xyz[1] - config_setting_.half_map_size,
                     (int64_t)loc_xyz[2] + config_setting_.half_map_size, (int64_t)loc_xyz[2] - config_setting_.half_map_size);
   double t_sliding_end = omp_get_wtime();
-  std::cout<<RED<<"[DEBUG]: Map sliding using "<<t_sliding_end - t_sliding_start<<" secs"<<RESET<<"\n";
+  spdlog::debug("{}[ VOXEL MAP ]: Map sliding using {:.6f} secs{}", RED, t_sliding_end - t_sliding_start, RESET);
   return;
 }
 
-void VoxelMapManager::clearMemOutOfMap(const int& x_max,const int& x_min,const int& y_max,const int& y_min,const int& z_max,const int& z_min )
-{
-  int delete_voxel_cout = 0;
+void VoxelMapManager::clearMemOutOfMap(const int &x_max, const int &x_min,
+                                       const int &y_max, const int &y_min,
+                                       const int &z_max, const int &z_min) {
+  int delete_voxel_count = 0;
   // double delete_time = 0;
   // double last_delete_time = 0;
   for (auto it = voxel_map_.begin(); it != voxel_map_.end(); )
@@ -971,11 +974,10 @@ void VoxelMapManager::clearMemOutOfMap(const int& x_max,const int& x_min,const i
       delete it->second;
       it = voxel_map_.erase(it);
       // delete_time += omp_get_wtime() - last_delete_time;
-      delete_voxel_cout++;
+      delete_voxel_count++;
     } else {
       ++it;
     }
   }
-  std::cout<<RED<<"[DEBUG]: Delete "<<delete_voxel_cout<<" root voxels"<<RESET<<"\n";
-  // std::cout<<RED<<"[DEBUG]: Delete "<<delete_voxel_cout<<" voxels using "<<delete_time<<" s"<<RESET<<"\n";
+  spdlog::debug("{}[ VOXEL MAP ]: Delete {:d} root voxels{}", RED, delete_voxel_count, RESET);
 }
