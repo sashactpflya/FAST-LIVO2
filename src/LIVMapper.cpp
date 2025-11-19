@@ -343,7 +343,7 @@ void LIVMapper::handleVIO()
     return;
   }
 
-  spdlog::info("[ VIO ] Raw feature num: {:d}", pcl_w_wait_pub->points.size());
+  spdlog::debug("[ VIO ] Raw feature num: {:d}", pcl_w_wait_pub->points.size());
 
   if (fabs((LidarMeasures.last_lio_update_time - _first_lidar_time) -
            plot_time) < (frame_cnt / 2 * 0.1)) {
@@ -478,7 +478,7 @@ void LIVMapper::handleLIO()
     voxelmap_manager->pv_list_[i].var = var;
   }
   voxelmap_manager->UpdateVoxelMap(voxelmap_manager->pv_list_);
-  spdlog::info("[ LIO ] Update Voxel Map");
+  spdlog::debug("[ LIO ] Update Voxel Map");
   _pv_list = voxelmap_manager->pv_list_;
   
   double t4 = omp_get_wtime();
@@ -915,7 +915,7 @@ void LIVMapper::img_cbk(const sensor_msgs::msg::Image::ConstSharedPtr &msg_in)
   double msg_header_time = rclcpp::Time(msg->header.stamp).seconds() + img_time_offset;
   if (abs(msg_header_time - last_timestamp_img) < 0.001)
     return;
-  spdlog::info("Get image, its header time: {:.6f}", msg_header_time);
+  spdlog::debug("Get image, its header time: {:.6f}", msg_header_time);
   if (last_timestamp_lidar < 0)
     return;
 

@@ -12,8 +12,9 @@ which is included as part of this source code package.
 
 #include "vio.h"
 
-VIOManager::VIOManager()
-{
+#include <spdlog/spdlog.h>
+
+VIOManager::VIOManager() {
   // downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
 }
 
@@ -48,12 +49,12 @@ void VIOManager::initializeVIO()
   cy = cam->cy();
   image_resize_factor = cam->scale();
 
-  printf("intrinsic: %.6lf, %.6lf, %.6lf, %.6lf\n", fx, fy, cx, cy);
+  spdlog::info("[ VIO ] intrinsic: fx={:.6}, fy={:.6}, cx={:.6}, {:.6}", fx, fy, cx, cy);
 
   width = cam->width();
   height = cam->height();
 
-  printf("width: %d, height: %d, scale: %f\n", width, height, image_resize_factor);
+  spdlog::info("[ VIO ] width: {:d}, height: {:d}, scale: {:.3}", width, height, image_resize_factor);
   Rci = Rcl * Rli;
   Pci = Rcl * Pli + Pcl;
 
@@ -86,7 +87,7 @@ void VIOManager::initializeVIO()
 
     std::vector<std::vector<V3D>>().swap(rays_with_sample_points);
     rays_with_sample_points.reserve(length);
-    printf("grid_size: %d, grid_n_height: %d, grid_n_width: %d, length: %d\n", grid_size, grid_n_height, grid_n_width, length);
+    spdlog::info("[ VIO ] grid_size: {:d}, grid_n_height: {:d}, grid_n_width: {:d}, length: {:d}", grid_size, grid_n_height, grid_n_width, length);
 
     float d_min = 0.1;
     float d_max = 3.0;
@@ -296,7 +297,7 @@ void VIOManager::warpAffine(const Matrix2d &A_cur_ref, const cv::Mat &img_ref, c
   const Matrix2f A_ref_cur = A_cur_ref.inverse().cast<float>();
   if (isnan(A_ref_cur(0, 0)))
   {
-    printf("Affine warp is NaN, probably camera has no translation\n"); // TODO
+    spdlog::warn("Affine warp is NaN, probably camera has no translation"); // TODO
     return;
   }
 
@@ -778,7 +779,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   // cout<<"C. addSubSparseMap: "<<t3-t2<<endl;
   // cout<<"depthcontinuous: C1 "<<t_2<<" C2 "<<t_3<<" C3 "<<t_4<<" C4
   // "<<t_5<<endl;
-  printf("[ VIO ] Retrieve %d points from visual sparse map\n", total_points);
+  spdlog::debug("[ VIO ] Retrieve {:d} points from visual sparse map", total_points);
 }
 
 void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
@@ -899,7 +900,7 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 
   // double t_b2 = omp_get_wtime() - t0;
 
-  printf("[ VIO ] Append %d new visual map points\n", add);
+  spdlog::debug("[ VIO ] Append {:d} new visual map points", add);
   // printf("pg.size: %d \n", pg.size());
   // printf("B1. : %.6lf \n", t_b1);
   // printf("B2. : %.6lf \n", t_b2);
@@ -963,7 +964,7 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
       pt->addFrameRef(ftr_new);
     }
   }
-  printf("[ VIO ] Update %d points in visual submap\n", update_num);
+  spdlog::debug("[ VIO ] Update {:d} points in visual submap", update_num);
 }
 
 void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
@@ -1787,7 +1788,7 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
 {
   if (width != img.cols || height != img.rows)
   {
-    if (img.empty()) printf("[ VIO ] Empty Image!\n");
+    if (img.empty()) spdlog::warn("[ VIO ] Empty Image!");
     cv::resize(img, img, cv::Size(img.cols * image_resize_factor, img.rows * image_resize_factor), 0, 0, CV_INTER_LINEAR);
   }
   img_rgb = img.clone();
