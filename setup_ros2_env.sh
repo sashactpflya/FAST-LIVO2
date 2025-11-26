@@ -1,6 +1,10 @@
 #!/bin/bash
 # Script pour configurer l'environnement ROS 2 après conan build
 
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# https://github.com/eclipse-cyclonedds/cyclonedds/blob/master/docs/manual/options.md
+export CYCLONEDDS_URI=/etc/cyclonedds.xml
+
 # Couleurs pour le terminal
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

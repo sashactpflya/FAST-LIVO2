@@ -21,7 +21,7 @@ option(ENABLE_VIO_OPENMP "Enable OpenMP code paths (defines MP_EN/MP_PROC_NUM)" 
 set(VIO_OMP_THREADS "0" CACHE STRING "OpenMP thread count for VIO (0=auto)")
 
 option(WITH_OPENMP "Build with OpenMP support" ON)
-option(WITH_MIMALLOC "Build with mimalloc support" OFF)
+option(WITH_MIMALLOC "Build with mimalloc support" ON)
 # Re-enable detailed timing by default (can still be turned off with -DENABLE_PERFORMANCE_TIMING=OFF)
 option(ENABLE_PERFORMANCE_TIMING "Enable console performance timing output" FALSE)
 
@@ -112,11 +112,7 @@ find_package(std_msgs CONFIG REQUIRED)
 find_package(cv_bridge CONFIG REQUIRED)
 find_package(tf2 CONFIG REQUIRED)
 find_package(tf2_ros CONFIG REQUIRED)
-find_package(tf2_geometry_msgs CONFIG REQUIRED)
-
-find_package(pcl_conversions CONFIG REQUIRED)
-find_package(rmw_fastrtps_cpp REQUIRED)
-find_package(image_transport REQUIRED)
+# find_package(tf2_geometry_msgs CONFIG REQUIRED)
 
 
 # Optional mimalloc
@@ -168,7 +164,7 @@ target_include_directories(fast_livo_interface INTERFACE
 )
 target_link_libraries(fast_livo_interface INTERFACE
     Eigen3::Eigen
-    pcl_common
+    pcl_common pcl_io pcl_filters
     opencv_core opencv_imgproc opencv_imgcodecs
     Sophus::Sophus
     Boost::boost
@@ -221,6 +217,9 @@ target_link_libraries(laser_mapping PUBLIC
     lio
     pre
     imu_proc
+    pcl_common
+    pcl_io
+    pcl_filters
 )
 
 # Main executable
@@ -231,7 +230,7 @@ target_link_libraries(fastlivo_mapping PRIVATE
 
 # Optional mimalloc
 if(WITH_MIMALLOC AND mimalloc_FOUND)
-  target_link_libraries(fastlivo_mapping PRIVATE mimalloc)
+  target_link_libraries(fastlivo_mapping PRIVATE mimalloc-static)
 endif()
 
 # ROS 2 support
@@ -245,6 +244,9 @@ ament_target_dependencies(vio PUBLIC
 
 ament_target_dependencies(lio PUBLIC
     sensor_msgs
+    geometry_msgs
+    tf2
+    tf2_ros
     std_msgs
 )
 
@@ -252,8 +254,6 @@ ament_target_dependencies(pre PUBLIC
     sensor_msgs
     tf2
     tf2_ros
-    tf2_geometry_msgs
-    pcl_conversions
 )
 
 ament_target_dependencies(imu_proc PUBLIC
@@ -270,7 +270,6 @@ ament_target_dependencies(laser_mapping PUBLIC
     cv_bridge
     tf2
     tf2_ros
-    image_transport
 )
 
 ament_target_dependencies(fastlivo_mapping PUBLIC
@@ -283,8 +282,7 @@ ament_target_dependencies(fastlivo_mapping PUBLIC
     cv_bridge
     tf2
     tf2_ros
-    pcl_conversions
-    image_transport
+    rmw_cyclonedds_cpp
 )
 
 # Install targets
@@ -313,6 +311,7 @@ install(
     DIRECTORY
         config
         launch
+        etc
     DESTINATION share/${PROJECT_NAME}/
 )
 

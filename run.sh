@@ -10,10 +10,12 @@ Usage: $0 <config> [--gdb]
 Prérequis: source setup_ros2_env.sh pour définir FAST_LIVO_SHARE_DIR.
 
 Options de configuration:
-  avia       - Livox AVIA
-  marslvig   - MARS LVIG dataset
-  hilti22    - HILTI 2022 dataset
-  ntu        - NTU VIRAL dataset
+  avia              - Livox AVIA
+  marslvig          - MARS LVIG dataset
+  hilti22           - HILTI 2022 dataset
+  ntu               - NTU VIRAL dataset
+  flyastick_raw     - Flyastick (raw data, no transformation)
+  flyastick_mock    - Flyastick (with mocked Namuga sensor)
 
 Options supplémentaires:
   --gdb      - Lancer fastlivo_mapping sous gdb
@@ -25,6 +27,8 @@ declare -A CONFIGS=(
     ["marslvig"]="MARS_LVIG.yaml camera_MARS_LVIG.yaml"
     ["hilti22"]="HILTI22.yaml camera_fisheye_HILTI22.yaml"
     ["ntu"]="NTU_VIRAL.yaml camera_NTU_VIRAL.yaml"
+    ["flyastick_raw"]="FLYASTICK_raw.yaml camera_vio_flyastick.yaml"
+    ["flyastick_mock"]="FLYASTICK_mock.yaml camera_vio_flyastick.yaml"
 )
 
 if [[ $# -lt 1 ]]; then
@@ -73,6 +77,11 @@ if [[ -z "$PACKAGE_SHARE_DIR" || ! -d "$PACKAGE_SHARE_DIR" ]]; then
     echo "   Sourcez d'abord l'environnement: source setup_ros2_env.sh"
     exit 1
 fi
+
+# Set CycloneDDS config to repository default if not already provided.
+SCRIPTPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export CYCLONEDDS_URI="${CYCLONEDDS_URI:-file://$SCRIPTPATH/etc/cyclonedds_host.xml}"
+export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}"
 
 read -r MAIN_CONFIG CAM_CONFIG <<< "${CONFIGS[$CONFIG_NAME]}"
 

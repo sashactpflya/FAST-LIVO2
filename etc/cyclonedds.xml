@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<CycloneDDS xmlns="https://cdds.io/config" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/iceoryx/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface address="192.168.41.1" />
+        <NetworkInterface name="herelink" presence_required="false" />
+        <NetworkInterface name="auxsrv_bridge" presence_required="false" />
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <Peers>
+        <Peer Address="127.0.0.1" />
+      </Peers>
+      <Ports>
+        <!-- The default Base value is 7400, -->
+        <!-- but then the ports opened clash with the port 7502 of the lidar, -->
+        <!-- see https://cyclonedds.io/docs/cyclonedds/latest/config/port_numbers.html -->
+        <Base>7600</Base>
+      </Ports>
+      <MaxAutoParticipantIndex>50</MaxAutoParticipantIndex>
+    </Discovery>
+
+    <Tracing>
+      <Verbosity>config</Verbosity>
+      <OutputFile>/mnt/logs/ros/dds.log.${CYCLONEDDS_PID}</OutputFile>
+    </Tracing>
+
+    <SharedMemory>
+      <Enable>true</Enable>
+      <LogLevel>info</LogLevel>
+    </SharedMemory>
+  </Domain>
+</CycloneDDS>
