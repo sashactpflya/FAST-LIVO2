@@ -216,7 +216,7 @@ void LIVMapper::initializeFiles()
   fout_out.open(DEBUG_FILE_DIR("mat_out.txt"), std::ios::out);
 }
 
-void LIVMapper::initializeSubscribersAndPublishers(image_transport::ImageTransport &it) 
+void LIVMapper::initializeSubscribersAndPublishers() 
 {
   using std::placeholders::_1;
   const auto high_queue_qos = rclcpp::QoS(rclcpp::KeepLast(200000));
@@ -459,7 +459,7 @@ void LIVMapper::handleLIO()
   euler_cur = RotMtoEuler(_state.rot_end);
   tf2::Quaternion quat;
   quat.setRPY(euler_cur(0), euler_cur(1), euler_cur(2));
-  geoQuat = tf2::toMsg(quat);
+  geoQuat = fast_livo::utils::toMsg(quat);
   publish_odometry(pubOdomAftMapped, current_stamp);
 
   double t3 = omp_get_wtime();
@@ -1268,7 +1268,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
   spdlog::error("out sync");
 }
 
-void LIVMapper::publish_img_rgb(const image_transport::Publisher &pubImage, VIOManagerPtr vio_manager, const rclcpp::Time &stamp)
+void LIVMapper::publish_img_rgb(const rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr &pubImage, VIOManagerPtr vio_manager, const rclcpp::Time &stamp)
 {
   cv::Mat img_rgb = vio_manager->img_cp;
   cv_bridge::CvImage out_msg;
@@ -1276,7 +1276,7 @@ void LIVMapper::publish_img_rgb(const image_transport::Publisher &pubImage, VIOM
   out_msg.header.frame_id = "camera_init";
   out_msg.encoding = sensor_msgs::image_encodings::BGR8;
   out_msg.image = img_rgb;
-  pubImage.publish(out_msg.toImageMsg());
+  if (pubImage) pubImage->publish(*out_msg.toImageMsg());
 }
 
 void LIVMapper::publish_frame_world(
@@ -1336,11 +1336,11 @@ void LIVMapper::publish_frame_world(
   sensor_msgs::msg::PointCloud2 laserCloudmsg;
   if (do_colorize) {
     // cout << "RGB pointcloud size: " << laserCloudWorldRGB->size() << endl;
-    pcl::toROSMsg(*laserCloudWorldRGB, laserCloudmsg);
+    ros_pcl::toROSMsg(*laserCloudWorldRGB, laserCloudmsg);
   }
   else 
   { 
-    pcl::toROSMsg(*pcl_w_wait_pub, laserCloudmsg); 
+    ros_pcl::toROSMsg(*pcl_w_wait_pub, laserCloudmsg); 
   }
   laserCloudmsg.header.stamp = stamp;
   laserCloudmsg.header.frame_id = "camera_init";
@@ -1404,7 +1404,7 @@ void LIVMapper::publish_visual_sub_map(const rclcpp::Publisher<sensor_msgs::msg:
   if (1)
   {
     sensor_msgs::msg::PointCloud2 laserCloudmsg;
-    pcl::toROSMsg(*sub_pcl_visual_map_pub, laserCloudmsg);
+    ros_pcl::toROSMsg(*sub_pcl_visual_map_pub, laserCloudmsg);
     laserCloudmsg.header.stamp = stamp;
     laserCloudmsg.header.frame_id = "camera_init";
     if (pubSubVisualMap) pubSubVisualMap->publish(laserCloudmsg);
@@ -1423,7 +1423,7 @@ void LIVMapper::publish_effect_world(const rclcpp::Publisher<sensor_msgs::msg::P
     laserCloudWorld->points[i].z = ptpl_list[i].point_w_[2];
   }
   sensor_msgs::msg::PointCloud2 laserCloudFullRes3;
-  pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
+  ros_pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
   laserCloudFullRes3.header.stamp = stamp;
   laserCloudFullRes3.header.frame_id = "camera_init";
   if (pubLaserCloudEffect) pubLaserCloudEffect->publish(laserCloudFullRes3);
@@ -1458,7 +1458,7 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
 
   // camera_init --> aft_mapped; store for zero-order hold publisher
   geometry_msgs::msg::TransformStamped transform_msg;
-  transform_msg.transform = tf2::toMsg(transform);
+  transform_msg.transform = fast_livo::utils::toMsg(transform);
   latest_tf_transform_ = transform_msg.transform;
   latest_tf_time_ = stamp;
   latest_tf_wall_time_ = node_->now();
@@ -1523,7 +1523,7 @@ void LIVMapper::publish_tf_hold() {
 
   // PandarXT-32 -> camera_init using zero-order hold and fixed aft->pandar
   tf2::Transform cam_to_aft_tf;
-  tf2::fromMsg(latest_tf_transform_, cam_to_aft_tf);
+  fast_livo::utils::fromMsg(latest_tf_transform_, cam_to_aft_tf);
   tf2::Transform cam_to_pandar_tf = cam_to_aft_tf * aft_to_pandar_tf_;
   tf2::Transform pandar_to_cam_tf = cam_to_pandar_tf.inverse();
 
@@ -1531,7 +1531,7 @@ void LIVMapper::publish_tf_hold() {
   transform_pandar_to_cam.header.stamp = stamped_time;
   transform_pandar_to_cam.header.frame_id = "PandarXT-32";
   transform_pandar_to_cam.child_frame_id = "camera_init";
-  transform_pandar_to_cam.transform = tf2::toMsg(pandar_to_cam_tf);
+  transform_pandar_to_cam.transform = fast_livo::utils::toMsg(pandar_to_cam_tf);
   tf_broadcaster_->sendTransform(transform_pandar_to_cam);
 }
 
