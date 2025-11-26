@@ -15,8 +15,7 @@ which is included as part of this source code package.
 #include <spdlog/spdlog.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/convert.h>
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include "utils/ros_tf2_conversions.hpp"
 
 void calcBodyCov(Eigen::Vector3d &pb, const float range_inc, const float degree_inc, Eigen::Matrix3d &cov)
 {
@@ -524,7 +523,7 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
 
       tf2::Quaternion q;
       q.setRPY(euler_cur(0), euler_cur(1), euler_cur(2));
-      geoQuat_ = tf2::toMsg(q);
+      geoQuat_ = fast_livo::utils::toMsg(q);
 
       // VD(DIM_STATE) K_sum  = K.rowwise().sum();
       // VD(DIM_STATE) P_diag = _state.cov.diagonal();

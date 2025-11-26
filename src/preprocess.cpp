@@ -12,8 +12,8 @@ which is included as part of this source code package.
 
 #include "preprocess.h"
 
-#include <pcl_conversions/pcl_conversions.h>
 #include "common_lib.h"
+#include "utils/ros_pcl_conversions.h"
 
 #define RETURN0 0x00
 #define RETURN0AND1 0x10
@@ -209,7 +209,7 @@ void Preprocess::l515_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   pl_corn.clear();
   pl_full.clear();
   pcl::PointCloud<pcl::PointXYZRGB> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
+  ros_pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.size();
   pl_corn.reserve(plsize);
   pl_surf.reserve(plsize);
@@ -249,7 +249,7 @@ void Preprocess::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstShared
   pl_corn.clear();
   pl_full.clear();
   pcl::PointCloud<ouster_ros::Point> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
+  ros_pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.size();
   pl_corn.reserve(plsize);
   pl_surf.reserve(plsize);
@@ -353,7 +353,7 @@ void Preprocess::velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstShar
   pl_full.clear();
 
   pcl::PointCloud<velodyne_ros::Point> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
+  ros_pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.points.size();
   if (plsize == 0) return;
   pl_surf.reserve(plsize);
@@ -519,7 +519,7 @@ void Preprocess::Pandar128_handler(const sensor_msgs::msg::PointCloud2::ConstSha
   pl_surf.clear();
 
   pcl::PointCloud<Pandar128_ros::Point> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
+  ros_pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.points.size();
   pl_surf.reserve(plsize);
 
@@ -573,7 +573,7 @@ void Preprocess::xt32_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPt
   pl_full.clear();
 
   pcl::PointCloud<xt32_ros::Point> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
+  ros_pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.points.size();
   pl_surf.reserve(plsize);
 
@@ -715,7 +715,7 @@ void Preprocess::robosense_handler(const sensor_msgs::msg::PointCloud2::ConstSha
   pl_surf.clear();
 
   pcl::PointCloud<robosense_ros::Point> pl_orig;
-  pcl::fromROSMsg(*msg, pl_orig);
+  ros_pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.size();
   pl_surf.reserve(plsize);
 
@@ -987,7 +987,7 @@ void Preprocess::pub_func(PointCloudXYZI &pl, const rclcpp::Time &ct)
   pl.height = 1;
   pl.width = pl.size();
   sensor_msgs::msg::PointCloud2 output;
-  pcl::toROSMsg(pl, output);
+  ros_pcl::toROSMsg(pl, output);
   output.header.frame_id = "livox";
   output.header.stamp = ct;
 }

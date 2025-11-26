@@ -15,15 +15,15 @@ which is included as part of this source code package.
 #include <cmath>
 #include <functional>
 #include <pcl/io/pcd_io.h>
-#include <pcl_conversions/pcl_conversions.h>
 #include <pcl/filters/filter.h>
 #include <rclcpp/clock.hpp>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <spdlog/spdlog.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include "utils/color.h"
+#include "utils/ros_tf2_conversions.hpp"
+#include "utils/ros_pcl_conversions.h"
 
 LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
     : extT(0, 0, 0),
