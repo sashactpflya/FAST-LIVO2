@@ -93,8 +93,36 @@ echo "  - $PACKAGE_SHARE_DIR/config/$MAIN_CONFIG"
 echo "  - $PACKAGE_SHARE_DIR/config/$CAM_CONFIG"
 echo ""
 
+# Resolve built binary path (conan build or install layout)
+if [[ "$PACKAGE_SHARE_DIR" == */share/fast_livo ]]; then
+    PACKAGE_PREFIX="${PACKAGE_SHARE_DIR%/share/fast_livo}"
+else
+    PACKAGE_PREFIX="$(cd "$PACKAGE_SHARE_DIR/.." && pwd)"
+fi
+
+# Candidate binaries (install + build/ament_cmake_index layouts)
+BIN_CANDIDATES=(
+    "$PACKAGE_PREFIX/lib/fast_livo/fastlivo_mapping"
+    "$PACKAGE_PREFIX/ament_cmake_index/lib/fast_livo/fastlivo_mapping"
+)
+
+BIN=""
+for candidate in "${BIN_CANDIDATES[@]}"; do
+    if [[ -x "$candidate" ]]; then
+        BIN="$candidate"
+        break
+    fi
+done
+
+if [[ ! -x "$BIN" ]]; then
+    echo "❌ Binaire introuvable (essayé):"
+    printf '   - %s\n' "${BIN_CANDIDATES[@]}"
+    echo "   Assure-toi d'avoir compilé (ex: ninja -C build/<preset> fastlivo_mapping)"
+    exit 1
+fi
+
 CMD=(
-    ros2 run fast_livo fastlivo_mapping
+    "$BIN"
     --ros-args
     --params-file "$PACKAGE_SHARE_DIR/config/$MAIN_CONFIG"
     --params-file "$PACKAGE_SHARE_DIR/config/$CAM_CONFIG"

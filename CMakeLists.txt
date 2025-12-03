@@ -102,6 +102,7 @@ add_subdirectory(rpg_vikit/vikit_common)
 
 # ROS 2 dependencies
 find_package(ament_cmake CONFIG REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(rclcpp CONFIG REQUIRED)
 find_package(sensor_msgs CONFIG REQUIRED)
 find_package(visualization_msgs CONFIG REQUIRED)
@@ -111,7 +112,24 @@ find_package(std_msgs CONFIG REQUIRED)
 find_package(cv_bridge CONFIG REQUIRED)
 find_package(tf2 CONFIG REQUIRED)
 find_package(tf2_ros CONFIG REQUIRED)
+find_package(rclcpp_action CONFIG REQUIRED)
 # find_package(tf2_geometry_msgs CONFIG REQUIRED)
+
+# On systems without Fast-RTPS installed, builtin_interfaces may miss the
+# Fast-RTPS typesupport targets. Create lightweight placeholders so packages
+# exporting them still configure correctly (CycloneDDS runtime remains used).
+if(NOT TARGET builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_c)
+  add_library(builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_c INTERFACE IMPORTED)
+endif()
+if(NOT TARGET builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_cpp)
+  add_library(builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_cpp INTERFACE IMPORTED)
+endif()
+if(NOT TARGET service_msgs::service_msgs__rosidl_typesupport_fastrtps_c)
+  add_library(service_msgs::service_msgs__rosidl_typesupport_fastrtps_c INTERFACE IMPORTED)
+endif()
+if(NOT TARGET service_msgs::service_msgs__rosidl_typesupport_fastrtps_cpp)
+  add_library(service_msgs::service_msgs__rosidl_typesupport_fastrtps_cpp INTERFACE IMPORTED)
+endif()
 
 
 # Optional mimalloc
@@ -218,6 +236,7 @@ target_link_libraries(laser_mapping PUBLIC
     pcl_common
     pcl_io
     pcl_filters
+    vikit_common
 )
 
 # Main executable
@@ -237,7 +256,9 @@ message(STATUS "ROS 2 support enabled")
 ament_target_dependencies(vio PUBLIC
     sensor_msgs
     geometry_msgs
+    visualization_msgs
     std_msgs
+    rclcpp
 )
 
 ament_target_dependencies(lio PUBLIC
@@ -246,17 +267,20 @@ ament_target_dependencies(lio PUBLIC
     tf2
     tf2_ros
     std_msgs
+    visualization_msgs
 )
 
 ament_target_dependencies(pre PUBLIC
     sensor_msgs
     tf2
     tf2_ros
+    rclcpp
 )
 
 ament_target_dependencies(imu_proc PUBLIC
     sensor_msgs
     nav_msgs
+    rclcpp
 )
 
 ament_target_dependencies(laser_mapping PUBLIC
@@ -272,6 +296,7 @@ ament_target_dependencies(laser_mapping PUBLIC
 
 ament_target_dependencies(fastlivo_mapping PUBLIC
     rclcpp
+    rclcpp_action
     sensor_msgs
     geometry_msgs
     visualization_msgs
