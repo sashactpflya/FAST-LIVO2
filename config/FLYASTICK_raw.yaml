@@ -18,6 +18,7 @@ fast_livo:
       -  0.9324413862988172
       -  0.04397600618325498
       - -0.10263054865284184
+      use_intermediate_extrinsic: true # Whether to use IMU->VIO and VIO->Camera extrinsics
       body_to_vio_T: # IMU to VIO translation expressed in IMU frame
       - -0.03516
       -  0.01337
@@ -36,9 +37,20 @@ fast_livo:
       - -0.11999708
       - 0.7002985
       - 0.6925062
-      Rcl: # Lidar -> Camera (row major)
-      Pcl: # Lidar -> Camera
-      use_intermediate_extrinsic: true
+      Rcl: # Direct Lidar -> Camera (row major) (in which frame ?)
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      Pcl:
+      - 0.0
+      - 0.0
+      - 0.0
     time_offset:
       imu_time_offset: 0.0
       img_time_offset: 0.0

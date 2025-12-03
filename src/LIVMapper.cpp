@@ -205,15 +205,14 @@ void LIVMapper::initializeTransforms()
         if( body_to_vio_ok && vio_to_cam_ok )
         {
             spdlog::info("Using intermediate extrinsic chain for lidar->camera transform.");
+            
+            has_cam_tf_ = true;
 
             // Compose Body -> Camera
             body_to_cam_tf_ = body_to_vio_tf_ * vio_to_cam_tf_;
 
             // Compute transform Tcl & Rcl using Lidar -> Body -> VIO -> Camera
             lidar_to_cam_tf_ = body_to_lidar_tf_.inverse() * body_to_cam_tf_;
-
-            has_cam_tf_ = true;
-
             return;
         }
         else
@@ -1604,7 +1603,10 @@ void LIVMapper::publishStaticTf() {
     tfs.push_back(fast_livo::utils::toMsg(vio_to_cam_tf_, stamp, "vio", "camera"));
   }
   
-  tfs.push_back(fast_livo::utils::toMsg(body_to_cam_tf_, stamp, "body", "camera_from_body"));
+  if ( has_vio_tf_ && has_cam_tf_ )
+  {
+      tfs.push_back(fast_livo::utils::toMsg(body_to_cam_tf_, stamp, "body", "camera_from_body"));
+  }
   tfs.push_back(fast_livo::utils::toMsg(lidar_to_cam_tf_, stamp, "os_sensor", "camera_from_lidar"));
 
 
