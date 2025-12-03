@@ -27,7 +27,7 @@ which is included as part of this source code package.
 #include "utils/ros_tf2_conversions.hpp"
 #include "utils/ros_pcl_conversions.h"
 #include "utils/camera_loader.hpp"
-
+#include "utils/time.hpp"
 
 LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
     : extT(0, 0, 0),
@@ -304,7 +304,7 @@ void LIVMapper::gravityAlignment() {
 
 void LIVMapper::processImu() 
 {
-  // double t0 = omp_get_wtime();
+  // double t0 = fast_livo::utils::getWTime();
 
   p_imu->Process2(LidarMeasures, _state, feats_undistort);
 
@@ -314,7 +314,7 @@ void LIVMapper::processImu()
   voxelmap_manager->state_ = _state;
   voxelmap_manager->feats_undistort_ = feats_undistort;
 
-  // double t_prop = omp_get_wtime();
+  // double t_prop = fast_livo::utils::getWTime();
 
   // std::cout << "[ Mapping ] feats_undistort: " << feats_undistort->size() << std::endl;
   // std::cout << "[ Mapping ] predict cov: " << _state.cov.diagonal().transpose() << std::endl;
@@ -408,12 +408,12 @@ void LIVMapper::handleLIO()
     return;
   }
 
-  double t0 = omp_get_wtime();
+  double t0 = fast_livo::utils::getWTime();
 
   downSizeFilterSurf.setInputCloud(feats_undistort);
   downSizeFilterSurf.filter(*feats_down_body);
   
-  double t_down = omp_get_wtime();
+  double t_down = fast_livo::utils::getWTime();
 
   feats_down_size = feats_down_body->points.size();
   voxelmap_manager->feats_down_body_ = feats_down_body;
@@ -427,13 +427,13 @@ void LIVMapper::handleLIO()
     voxelmap_manager->BuildVoxelMap();
   }
 
-  double t1 = omp_get_wtime();
+  double t1 = fast_livo::utils::getWTime();
 
   voxelmap_manager->StateEstimation(state_propagat);
   _state = voxelmap_manager->state_;
   _pv_list = voxelmap_manager->pv_list_;
 
-  double t2 = omp_get_wtime();
+  double t2 = fast_livo::utils::getWTime();
 
   if (imu_prop_enable) 
   {
@@ -466,7 +466,7 @@ void LIVMapper::handleLIO()
   geoQuat = fast_livo::utils::toMsg(quat);
   publish_odometry(pubOdomAftMapped, current_stamp);
 
-  double t3 = omp_get_wtime();
+  double t3 = fast_livo::utils::getWTime();
 
   PointCloudXYZI::Ptr world_lidar(new PointCloudXYZI());
   transformLidar(_state.rot_end, _state.pos_end, feats_down_body, world_lidar);
@@ -483,7 +483,7 @@ void LIVMapper::handleLIO()
   spdlog::debug("[ LIO ] Update Voxel Map");
   _pv_list = voxelmap_manager->pv_list_;
   
-  double t4 = omp_get_wtime();
+  double t4 = fast_livo::utils::getWTime();
 
   if(voxelmap_manager->config_setting_.map_sliding_en)
   {
@@ -1095,7 +1095,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
     /*** For LIVO mode, the time of LIO update is set to be the same as VIO, LIO
      * first than VIO imediatly ***/
     EKF_STATE last_lio_vio_flg = meas.lio_vio_flg;
-    // double t0 = omp_get_wtime();
+    double t0 = fast_livo::utils::getWTime();
     switch (last_lio_vio_flg)
     {
     // double img_capture_time = meas.lidar_frame_beg_time + exposure_time_init;
@@ -1192,7 +1192,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
       // printf("!!! meas.lio_vio_flg: %d \n", meas.lio_vio_flg);
       // printf("[ Data Cut ] pcl_proc_cur number: %d \n", meas.pcl_proc_cur
       // ->points.size()); printf("[ Data Cut ] LIO process time: %lf \n",
-      // omp_get_wtime() - t0);
+      //   fast_livo::utils::getWTime() - t0);
       return true;
     }
 
@@ -1224,7 +1224,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
       sig_buffer.notify_all();
       meas.measures.push_back(m);
       lidar_pushed = false; // after VIO update, the _lidar_frame_end_time will be refresh.
-      // printf("[ Data Cut ] VIO process time: %lf \n", omp_get_wtime() - t0);
+    //   printf("[ Data Cut ] VIO process time: %lf \n", fast_livo::utils::getWTime() - t0);
       return true;
     }
 

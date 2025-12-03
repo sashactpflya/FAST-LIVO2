@@ -100,7 +100,7 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &ms
 //   pl_surf.clear();
 //   pl_corn.clear();
 //   pl_full.clear();
-//   double t1 = omp_get_wtime();
+//   double t1 = fast_livo::utils::getWTime();
 //   int plsize = msg->point_num;
 //   printf("[ Preprocess ] Input point number: %d \n", plsize);
 //   // printf("point_filter_num: %d\n", point_filter_num);
@@ -139,7 +139,7 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &ms
 //     static int count = 0;
 //     static double time = 0.0;
 //     count++;
-//     double t0 = omp_get_wtime();
+//     double t0 = fast_livo::utils::getWTime();
 //     for (int j = 0; j < N_SCANS; j++)
 //     {
 //       if (pl_buff[j].size() <= 5) continue;
@@ -161,7 +161,7 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &ms
 //       give_feature(pl, types);
 //       // pl_surf += pl;
 //     }
-//     time += omp_get_wtime() - t0;
+//     time += fast_livo::utils::getWTime() - t0;
 //     printf("Feature extraction time: %lf \n", time / count);
 //   }
 //   else

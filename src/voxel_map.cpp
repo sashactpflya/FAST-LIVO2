@@ -15,7 +15,9 @@ which is included as part of this source code package.
 #include <spdlog/spdlog.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/convert.h>
+
 #include "utils/ros_tf2_conversions.hpp"
+#include "utils/time.hpp"
 
 void calcBodyCov(Eigen::Vector3d &pb, const float range_inc, const float degree_inc, Eigen::Matrix3d &cov)
 {
@@ -368,7 +370,7 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
 
   // build_residual_time = 0.0;
   // ekf_time = 0.0;
-  // double t0 = omp_get_wtime();
+  // double t0 = fast_livo::utils::getWTime();
 
   for (size_t i = 0; i < feats_down_body_->size(); i++)
   {
@@ -414,11 +416,11 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
     }
     ptpl_list_.clear();
 
-    // double t1 = omp_get_wtime();
+    // double t1 = fast_livo::utils::getWTime();
 
     BuildResidualListOMP(pv_list_, ptpl_list_);
 
-    // build_residual_time += omp_get_wtime() - t1;
+    // build_residual_time += fast_livo::utils::getWTime() - t1;
 
     for (int i = 0; i < ptpl_list_.size(); i++)
     {
@@ -532,7 +534,7 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
     if (EKF_stop_flg) break;
   }
 
-  // double t2 = omp_get_wtime();
+  // double t2 = fast_livo::utils::getWTime();
   // scan_count++;
   // ekf_time = t2 - t0 - build_residual_time;
 
@@ -964,7 +966,7 @@ void VoxelMapManager::mapSliding()
 
   //get global id now
   last_slide_position = position_last_;
-  double t_sliding_start = omp_get_wtime();
+  double t_sliding_start = fast_livo::utils::getWTime();
   float loc_xyz[3];
   for (int j = 0; j < 3; j++)
   {
@@ -975,7 +977,7 @@ void VoxelMapManager::mapSliding()
   clearMemOutOfMap((int64_t)loc_xyz[0] + config_setting_.half_map_size, (int64_t)loc_xyz[0] - config_setting_.half_map_size,
                     (int64_t)loc_xyz[1] + config_setting_.half_map_size, (int64_t)loc_xyz[1] - config_setting_.half_map_size,
                     (int64_t)loc_xyz[2] + config_setting_.half_map_size, (int64_t)loc_xyz[2] - config_setting_.half_map_size);
-  double t_sliding_end = omp_get_wtime();
+  double t_sliding_end = fast_livo::utils::getWTime();
   spdlog::debug("{}[ VOXEL MAP ]: Map sliding using {:.6f} secs{}", RED, t_sliding_end - t_sliding_start, RESET);
   return;
 }
@@ -991,10 +993,10 @@ void VoxelMapManager::clearMemOutOfMap(const int &x_max, const int &x_min,
     const VOXEL_LOCATION& loc = it->first;
     bool should_remove = loc.x > x_max || loc.x < x_min || loc.y > y_max || loc.y < y_min || loc.z > z_max || loc.z < z_min;
     if (should_remove){
-      // last_delete_time = omp_get_wtime();
+      // last_delete_time = fast_livo::utils::getWTime();
       delete it->second;
       it = voxel_map_.erase(it);
-      // delete_time += omp_get_wtime() - last_delete_time;
+      // delete_time += fast_livo::utils::getWTime() - last_delete_time;
       delete_voxel_count++;
     } else {
       ++it;

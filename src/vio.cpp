@@ -14,6 +14,8 @@ which is included as part of this source code package.
 
 #include <spdlog/spdlog.h>
 
+#include "utils/time.hpp"
+
 VIOManager::VIOManager() {
   // downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
 }
@@ -365,7 +367,7 @@ double VIOManager::calculateNCC(float *ref_patch, float *cur_patch, int patch_si
 void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (feat_map.size() <= 0) return;
-  double ts0 = omp_get_wtime();
+  double ts0 = fast_livo::utils::getWTime();
 
   // pg_down->reserve(feat_map.size());
   // downSizeFilter.setInputCloud(pg);
@@ -391,14 +393,14 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
   int loc_xyz[3];
 
-  // printf("A0. initial depthmap: %.6lf \n", omp_get_wtime() - ts0);
-  // double ts1 = omp_get_wtime();
+  // printf("A0. initial depthmap: %.6lf \n", fast_livo::utils::getWTime() - ts0);
+  // double ts1 = fast_livo::utils::getWTime();
 
   // printf("pg size: %zu \n", pg.size());
 
   for (int i = 0; i < pg.size(); i++)
   {
-    // double t0 = omp_get_wtime();
+    // double t0 = fast_livo::utils::getWTime();
 
     V3D pt_w = pg[i].point_w;
 
@@ -409,15 +411,15 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
     }
     VOXEL_LOCATION position(loc_xyz[0], loc_xyz[1], loc_xyz[2]);
 
-    // t_position += omp_get_wtime()-t0;
-    // double t1 = omp_get_wtime();
+    // t_position += fast_livo::utils::getWTime()-t0;
+    // double t1 = fast_livo::utils::getWTime();
 
     auto iter = sub_feat_map.find(position);
     if (iter == sub_feat_map.end()) { sub_feat_map[position] = 0; }
     else { iter->second = 0; }
 
-    // t_insert += omp_get_wtime()-t1;
-    // double t2 = omp_get_wtime();
+    // t_insert += fast_livo::utils::getWTime()-t1;
+    // double t2 = fast_livo::utils::getWTime();
 
     V3D pt_c(new_frame_->w2f(pt_w));
 
@@ -437,26 +439,26 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
         it[width * row + col] = depth;
       }
     }
-    // t_depth += omp_get_wtime()-t2;
+    // t_depth += fast_livo::utils::getWTime()-t2;
   }
 
   // imshow("depth_img", depth_img);
-  // printf("A1: %.6lf \n", omp_get_wtime() - ts1);
+  // printf("A1: %.6lf \n", fast_livo::utils::getWTime() - ts1);
   // printf("A11. calculate pt position: %.6lf \n", t_position);
   // printf("A12. sub_postion.insert(position): %.6lf \n", t_insert);
   // printf("A13. generate depth map: %.6lf \n", t_depth);
-  // printf("A. projection: %.6lf \n", omp_get_wtime() - ts0);
+  // printf("A. projection: %.6lf \n", fast_livo::utils::getWTime() - ts0);
 
-  // double t1 = omp_get_wtime();
+  // double t1 = fast_livo::utils::getWTime();
   vector<VOXEL_LOCATION> DeleteKeyList;
 
   for (auto &iter : sub_feat_map)
   {
     VOXEL_LOCATION position = iter.first;
 
-    // double t4 = omp_get_wtime();
+    // double t4 = fast_livo::utils::getWTime();
     auto corre_voxel = feat_map.find(position);
-    // double t5 = omp_get_wtime();
+    // double t5 = fast_livo::utils::getWTime();
 
     if (corre_voxel != feat_map.end())
     {
@@ -608,7 +610,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
     sub_feat_map.erase(key);
   }
 
-  // double t2 = omp_get_wtime();
+  // double t2 = fast_livo::utils::getWTime();
 
   // cout<<"B. feat_map.find: "<<t2-t1<<endl;
 
@@ -619,7 +621,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   {
     if (grid_num[i] == TYPE_MAP)
     {
-      // double t_1 = omp_get_wtime();
+      // double t_1 = fast_livo::utils::getWTime();
 
       VisualPoint *pt = retrieve_voxel_points[i];
       // visual_sub_map_cur.push_back(pt); // before
@@ -652,9 +654,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
       }
       if (depth_continous) continue;
 
-      // t_2 += omp_get_wtime() - t_1;
+      // t_2 += fast_livo::utils::getWTime() - t_1;
 
-      // t_1 = omp_get_wtime();
+      // t_1 = fast_livo::utils::getWTime();
       Feature *ref_ftr;
       std::vector<float> patch_wrap(warp_len);
 
@@ -745,9 +747,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
           warp_map[ref_ftr->id_] = ot;
         }
       }
-      // t_4 += omp_get_wtime() - t_1;
+      // t_4 += fast_livo::utils::getWTime() - t_1;
 
-      // t_1 = omp_get_wtime();
+      // t_1 = fast_livo::utils::getWTime();
 
       for (int pyramid_level = 0; pyramid_level <= patch_pyrimid_level - 1; pyramid_level++)
       {
@@ -782,12 +784,12 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
       visual_submap->warp_patch.push_back(patch_wrap);
       visual_submap->inv_expo_list.push_back(ref_ftr->inv_expo_time_);
 
-      // t_5 += omp_get_wtime() - t_1;
+      // t_5 += fast_livo::utils::getWTime() - t_1;
     }
   }
   total_points = visual_submap->voxel_points.size();
 
-  // double t3 = omp_get_wtime();
+  // double t3 = fast_livo::utils::getWTime();
   // cout<<"C. addSubSparseMap: "<<t3-t2<<endl;
   // cout<<"depthcontinuous: C1 "<<t_2<<" C2 "<<t_3<<" C3 "<<t_4<<" C4
   // "<<t_5<<endl;
@@ -818,7 +820,7 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 {
   if (pg.size() <= 10) return;
 
-  // double t0 = omp_get_wtime();
+  // double t0 = fast_livo::utils::getWTime();
   for (int i = 0; i < pg.size(); i++)
   {
     if (pg[i].normal == V3D(0, 0, 0)) continue;
@@ -866,8 +868,8 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
     }
   }
 
-  // double t_b1 = omp_get_wtime() - t0;
-  // t0 = omp_get_wtime();
+  // double t_b1 = fast_livo::utils::getWTime() - t0;
+  // t0 = fast_livo::utils::getWTime();
 
   int add = 0;
   for (int i = 0; i < length; i++)
@@ -910,7 +912,7 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
     }
   }
 
-  // double t_b2 = omp_get_wtime() - t0;
+  // double t_b2 = fast_livo::utils::getWTime() - t0;
 
   spdlog::debug("[ VIO ] Append {:d} new visual map points", add);
   // printf("pg.size: %d \n", pg.size());
@@ -1339,7 +1341,7 @@ void VIOManager::projectPatchFromRefToCur(const unordered_map<VOXEL_LOCATION, Vo
 
 void VIOManager::precomputeReferencePatches(int level)
 {
-  double t1 = omp_get_wtime();
+  double t1 = fast_livo::utils::getWTime();
   if (total_points == 0) return;
   MD(1, 2) Jimg;
   MD(2, 3) Jdpi;
@@ -1433,7 +1435,7 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
 
   for (int iteration = 0; iteration < max_iterations; iteration++)
   {
-    double t1 = omp_get_wtime();
+    double t1 = fast_livo::utils::getWTime();
     double count_outlier = 0;
     if (has_ref_patch_cache == false) precomputeReferencePatches(level);
     int n_meas = 0;
@@ -1494,9 +1496,9 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
 
     error = error / n_meas;
 
-    compute_jacobian_time += omp_get_wtime() - t1;
+    compute_jacobian_time += fast_livo::utils::getWTime() - t1;
 
-    double t3 = omp_get_wtime();
+    double t3 = fast_livo::utils::getWTime();
 
     if (error <= last_error)
     {
@@ -1524,7 +1526,7 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
       EKF_end = true;
     }
 
-    update_ekf_time += omp_get_wtime() - t3;
+    update_ekf_time += fast_livo::utils::getWTime() - t3;
 
     if (iteration == max_iterations || EKF_end) break; 
   }
@@ -1548,7 +1550,7 @@ void VIOManager::updateState(cv::Mat img, int level)
 
   for (int iteration = 0; iteration < max_iterations; iteration++)
   {
-    double t1 = omp_get_wtime();
+    double t1 = fast_livo::utils::getWTime();
 
     M3D Rwi(state->rot_end);
     V3D Pwi(state->pos_end);
@@ -1670,8 +1672,8 @@ void VIOManager::updateState(cv::Mat img, int level)
     }
 
     error = error / n_meas;
-    
-    compute_jacobian_time += omp_get_wtime() - t1;
+
+    compute_jacobian_time += fast_livo::utils::getWTime() - t1;
 
     // printf("\nPYRAMID LEVEL %i\n---------------\n", level);
     // std::cout << "It. " << iteration
@@ -1679,7 +1681,7 @@ void VIOManager::updateState(cv::Mat img, int level)
     //           << "\t new_error = " << error
     //           << std::endl;
 
-    double t3 = omp_get_wtime();
+    double t3 = fast_livo::utils::getWTime();
 
     if (error <= last_error)
     {
@@ -1716,7 +1718,7 @@ void VIOManager::updateState(cv::Mat img, int level)
       EKF_end = true;
     }
 
-    update_ekf_time += omp_get_wtime() - t3;
+    update_ekf_time += fast_livo::utils::getWTime() - t3;
 
     if (iteration == max_iterations || EKF_end) break;
   }
@@ -1844,33 +1846,33 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   
   resetGrid();
 
-  double t1 = omp_get_wtime();
+  double t1 = fast_livo::utils::getWTime();
 
   retrieveFromVisualSparseMap(img, pg, feat_map);
 
-  double t2 = omp_get_wtime();
+  double t2 = fast_livo::utils::getWTime();
 
   computeJacobianAndUpdateEKF(img);
 
-  double t3 = omp_get_wtime();
+  double t3 = fast_livo::utils::getWTime();
 
   generateVisualMapPoints(img, pg);
 
-  double t4 = omp_get_wtime();
+  double t4 = fast_livo::utils::getWTime();
   
   plotTrackedPoints();
 
   if (plot_flag) projectPatchFromRefToCur(feat_map);
 
-  double t5 = omp_get_wtime();
+  double t5 = fast_livo::utils::getWTime();
 
   updateVisualMapPoints(img);
 
-  double t6 = omp_get_wtime();
+  double t6 = fast_livo::utils::getWTime();
 
   updateReferencePatch(feat_map);
 
-  double t7 = omp_get_wtime();
+  double t7 = fast_livo::utils::getWTime();
   
   if(colmap_output_en)  dumpDataForColmap();
 

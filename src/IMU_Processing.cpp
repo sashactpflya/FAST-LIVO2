@@ -15,6 +15,7 @@ which is included as part of this source code package.
 #include <spdlog/spdlog.h>
 #include <rclcpp/time.hpp>
 #include <omp.h>
+#include "utils/time.hpp"
 
 ImuProcess::ImuProcess() : Eye3d(M3D::Identity()),
                            Zero3d(0, 0, 0), b_first_frame(true), imu_need_init(true)
@@ -239,7 +240,7 @@ void ImuProcess::Forward_without_imu(LidarMeasureGroup &meas, StatesGroup &state
 
 void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_inout, PointCloudXYZI &pcl_out)
 {
-  double t0 = omp_get_wtime();
+  double t0 = fast_livo::utils::getWTime();
   pcl_out.clear();
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   MeasureGroup &meas = lidar_meas.measures.back();
@@ -475,7 +476,7 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
   last_imu = v_imu.back();
   last_prop_end_time = prop_end_time;
 
-  double t1 = omp_get_wtime();
+  double t1 = fast_livo::utils::getWTime();
 
   // auto pos_liD_e = state_inout.pos_end + state_inout.rot_end *
   // Lid_offset_to_IMU; auto R_liD_e   = state_inout.rot_end * Lidar_R_to_IMU;
@@ -543,13 +544,13 @@ void ImuProcess::UndistortPcl(LidarMeasureGroup &lidar_meas, StatesGroup &state_
     pcl_wait_proc.clear();
     IMUpose.clear();
   }
-  // printf("[ IMU ] time forward: %lf, backward: %lf.\n", t1 - t0, omp_get_wtime() - t1);
+  // printf("[ IMU ] time forward: %lf, backward: %lf.\n", t1 - t0, fast_livo::utils::getWTime() - t1);
 }
 
 void ImuProcess::Process2(LidarMeasureGroup &lidar_meas, StatesGroup &stat, PointCloudXYZI::Ptr cur_pcl_un_)
 {
   double t1, t2, t3;
-  t1 = omp_get_wtime();
+  t1 = fast_livo::utils::getWTime();
   assert(lidar_meas.lidar != nullptr);
   if (!imu_en)
   {
