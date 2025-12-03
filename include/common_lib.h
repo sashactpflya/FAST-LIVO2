@@ -31,6 +31,8 @@ using namespace Sophus;
 #define SIZE_SMALL (100)
 #define VEC_FROM_ARRAY(v) v[0], v[1], v[2]
 #define MAT_FROM_ARRAY(v) v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]
+#define TF2_QUAT_FROM_ARRAY(v) tf2::Quaternion(v[0], v[1], v[2], v[3]) // qx, qy, qz, qw
+#define EIGEN_QUAT_FROM_ARRAY(v) Eigen::Quaternion(v[3], v[0], v[1], v[2]) // qw, qx, qy, qz
 #define DEBUG_FILE_DIR(name) (string(string(ROOT_DIR) + "Log/" + name))
 
 enum LID_TYPE
@@ -41,8 +43,38 @@ enum LID_TYPE
   L515 = 4,
   XT32 = 5,
   PANDAR128 = 6,
-  ROBOSENSE = 7
+  ROBOSENSE = 7,
+  OUST32 = 8,
+  NAMUGA_MOCK = 9
 };
+
+inline std::string getLidarFrameName(const LID_TYPE &lidar_type)
+{
+  switch (lidar_type)
+  {
+  case AVIA:
+    return "livox_frame";
+  case VELO16:
+    return "velodyne_frame";
+  case OUST64:
+    return "os1_frame";
+  case L515:
+    return "l515_frame";
+  case XT32:
+    return "PandarXT-32";
+  case PANDAR128:
+    return "pandar128_frame";
+  case ROBOSENSE:
+    return "rs_frame";
+  case OUST32:
+    return "os_sensor";
+  case NAMUGA_MOCK:
+    return "namuga_mock_frame";
+  default:
+    return "lidar_frame";
+  }
+}
+
 enum SLAM_MODE
 {
   ONLY_LO = 0,

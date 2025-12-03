@@ -7,17 +7,13 @@ fast_livo:
       img_en: 1
       lidar_en: 1
       ros_driver_bug_fix: false
+      colorize_map_en: false
     extrin_calib:
       extrinsic_T:
       - -0.05
       - 0.0
       - 0.055
-      extrinsic_R:
-      - 1.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 1.0
+      extrinsic_R: # Lidar to IMU quaternion (qx, qy, qz, qw)
       - 0.0
       - 0.0
       - 0.0
@@ -36,6 +32,7 @@ fast_livo:
       - 0.122993
       - 0.0398643
       - -0.0577101
+      use_intermediate_extrinsic: false
     time_offset:
       lidar_time_offset: -0.1
       imu_time_offset: 0.0

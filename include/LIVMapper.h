@@ -146,6 +146,11 @@ public:
   vector<double> extrinR;
   vector<double> cameraextrinT;
   std::vector<double> cameraextrinR;
+  bool use_intermediate_extrinsic_ = true; ///< Use body->vio and vio->cam chain to derive lidar->cam
+  std::vector<double> vio_to_camera_T; ///< Translation of camera in VIO frame
+  std::vector<double> vio_to_camera_R; ///< Quaternion (qx, qy, qz, qw) for VIO -> Camera
+  std::vector<double> body_to_vio_T;    ///< Translation of VIO in IMU frame
+  std::vector<double> body_to_vio_R;    ///< Quaternion (qx, qy, qz, qw) for IMU -> VIO
   double IMG_POINT_COV;
 
   PointCloudXYZI::Ptr visual_sub_map;
@@ -212,8 +217,23 @@ public:
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
     rclcpp::TimerBase::SharedPtr static_tf_timer_;
     rclcpp::TimerBase::SharedPtr tf_hold_timer_;
-    tf2::Transform aft_to_pandar_tf_;
+    tf2::Transform aft_to_lidar_tf_; // DEPRECTATED: use body_to_lidar_tf_ instead
+    tf2::Transform body_to_lidar_tf_;
+    tf2::Transform body_to_vio_tf_;
+    tf2::Transform vio_to_cam_tf_;
+    tf2::Transform vio_to_cam0_tf_;
+    tf2::Transform vio_to_cam1_tf_;
+    tf2::Transform vio_to_cam2_tf_;
+    tf2::Transform body_to_cam_tf_;
+    tf2::Transform lidar_to_cam_tf_;
+    bool has_vio_tf_ = false;
+    bool has_cam_tf_ = false;
+    std::string lidar_frame_id_ = "lidar_frame";
+    std::string vio_frame_id_ = "vio";
+    std::string camera_frame_id_ = "camera";
 
-    void publish_static_pandar_tf();
+    void initializeTransforms();
+    void publishStaticTf();
     void publish_tf_hold();
+    tf2::Transform computeBodyToLidarTf() const;
 };

@@ -74,9 +74,14 @@ inline geometry_msgs::msg::Transform toMsg(const tf2::Transform &tf)
   return toMsg<geometry_msgs::msg::Transform, tf2::Transform>(tf);
 }
 
-inline geometry_msgs::msg::TransformStamped toMsgStamped(const tf2::Transform &tf)
+inline geometry_msgs::msg::TransformStamped toMsg(const tf2::Transform &tf, const rclcpp::Time &stamp,
+                                                  const std::string &frame_id, const std::string &child_frame_id)
 {
-  return toMsg<geometry_msgs::msg::TransformStamped, tf2::Transform>(tf);
+  geometry_msgs::msg::TransformStamped tf_msg = toMsg<geometry_msgs::msg::TransformStamped, tf2::Transform>(tf);
+  tf_msg.header.stamp = stamp;
+  tf_msg.header.frame_id = frame_id;
+  tf_msg.child_frame_id = child_frame_id;
+  return tf_msg;
 }
 
 }  // namespace fast_livo::utils

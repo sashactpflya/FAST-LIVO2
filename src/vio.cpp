@@ -14,6 +14,7 @@ which is included as part of this source code package.
 
 #include <spdlog/spdlog.h>
 
+#include "feature.h"
 #include "utils/time.hpp"
 
 VIOManager::VIOManager() {
@@ -41,6 +42,12 @@ void VIOManager::setLidarToCameraExtrinsic(vector<double> &R, vector<double> &P)
   Pcl << VEC_FROM_ARRAY(P);
 }
 
+void VIOManager::setLidarToCameraExtrinsic(const M3D &R, const V3D &P)
+{
+  Rcl = R;
+  Pcl = P;
+}
+
 void VIOManager::initializeVIO()
 {
   visual_submap = new SubSparseMap;
@@ -51,7 +58,7 @@ void VIOManager::initializeVIO()
   cy = cam->cy();
   image_resize_factor = cam->scale();
 
-  spdlog::info("[ VIO ] intrinsic: fx={:.6}, fy={:.6}, cx={:.6}, {:.6}", fx, fy, cx, cy);
+  spdlog::info("[ VIO ] intrinsic: fx={:.6}, fy={:.6}, cx={:.6}, cy={:.6}", fx, fy, cx, cy);
 
   width = cam->width();
   height = cam->height();

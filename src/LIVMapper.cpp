@@ -35,7 +35,7 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
       node_(node)
 {
   extrinT.assign(3, 0.0);
-  extrinR.assign(9, 0.0);
+  extrinR = {0.0, 0.0, 0.0, 1.0};
   cameraextrinT.assign(3, 0.0);
   cameraextrinR.assign(9, 0.0);
 
@@ -43,6 +43,9 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
   p_imu = std::make_shared<ImuProcess>();
 
   readParameters(node_);
+  lidar_frame_id_ = getLidarFrameName(static_cast<LID_TYPE>(p_pre->lidar_type));
+  vio_frame_id_ = "vio";
+  camera_frame_id_ = "camera";
   VoxelMapConfig voxel_config;
   loadVoxelConfig(node_, voxel_config);
 
@@ -60,23 +63,11 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
   initializeFiles();
   initializeComponents();
   path.header.stamp = node_->now();
-  path.header.frame_id = "camera_init";
+  path.header.frame_id = "init_pose";
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
   static_tf_broadcaster_ =
       std::make_shared<tf2_ros::StaticTransformBroadcaster>(node_);
-
-  // precompute aft_mapped -> PandarXT-32 transform (fixed)
-  {
-    tf2::Quaternion lidar_q;
-    lidar_q.setW(0.0);
-    lidar_q.setX(-0.7071068);
-    lidar_q.setY(0.7071068);
-    lidar_q.setZ(0.0);
-    lidar_q.normalize();
-    aft_to_pandar_tf_.setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
-    aft_to_pandar_tf_.setRotation(lidar_q);
-  }
 }
 
 LIVMapper::~LIVMapper() {}
@@ -136,34 +127,138 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   extrinR = node->declare_parameter<std::vector<double>>("extrin_calib.extrinsic_R", extrinR);
   cameraextrinT = node->declare_parameter<std::vector<double>>("extrin_calib.Pcl", std::vector<double>{});
   cameraextrinR = node->declare_parameter<std::vector<double>>("extrin_calib.Rcl", std::vector<double>{});
+  vio_to_camera_T = node->declare_parameter<std::vector<double>>("extrin_calib.vio_to_camera_T", std::vector<double>{});
+  vio_to_camera_R = node->declare_parameter<std::vector<double>>("extrin_calib.vio_to_camera_R", std::vector<double>{});
+  body_to_vio_T = node->declare_parameter<std::vector<double>>("extrin_calib.body_to_vio_T", std::vector<double>{});
+  body_to_vio_R = node->declare_parameter<std::vector<double>>("extrin_calib.body_to_vio_R", std::vector<double>{});
   plot_time = node->declare_parameter<double>("debug.plot_time", -10.0);
   frame_cnt = node->declare_parameter<int>("debug.frame_cnt", 6);
 
   blind_rgb_points = node->declare_parameter<double>("publish.blind_rgb_points", 0.01);
-  colorize_map_en = node->declare_parameter<bool>("publish.colorize_map_en", true);
+  colorize_map_en = node->declare_parameter<bool>("common.colorize_map_en", true);
   pub_scan_num = node->declare_parameter<int>("publish.pub_scan_num", 1);
   pub_effect_point_en = node->declare_parameter<bool>("publish.pub_effect_point_en", false);
   dense_map_en = node->declare_parameter<bool>("publish.dense_map_en", false);
 
+  use_intermediate_extrinsic_ = node->declare_parameter<bool>("extrin_calib.use_intermediate_extrinsic", true);
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 }
 
-void LIVMapper::initializeComponents() 
+void LIVMapper::initializeTransforms()
 {
+    auto getVector3 = [](const std::vector<double> &vec, const char *name, bool &ok) {
+      if (vec.size() == 3) return tf2::Vector3(VEC_FROM_ARRAY(vec));
+      spdlog::warn("Parameter {} has {} entries, expected 3. Using zeros.", name, vec.size());
+      ok = false;
+      return tf2::Vector3(0.0, 0.0, 0.0);
+    };
+    auto getQuaternion = [](const std::vector<double> &vec, const char *name, bool &ok) {
+      if (vec.size() == 4) return TF2_QUAT_FROM_ARRAY(vec);
+      spdlog::warn("Parameter {} has {} entries, expected 4. Using identity.", name, vec.size());
+      ok = false;
+      return tf2::Quaternion(0.0, 0.0, 0.0, 1.0);
+    };
+    auto getRotationMatrix = [](const std::vector<double> &vec, const char *name, bool &ok) {
+      if (vec.size() == 9) {
+        tf2::Matrix3x3 R = tf2::Matrix3x3(
+            vec[0], vec[1], vec[2],
+            vec[3], vec[4], vec[5],
+            vec[6], vec[7], vec[8]);
+        return R;
+      }
+      spdlog::warn("Parameter {} has {} entries, expected 9. Using identity.", name, vec.size());
+      ok = false;
+      return tf2::Matrix3x3::getIdentity();
+    };
+
+    // Body -> Lidar
+    body_to_lidar_tf_.setOrigin(tf2::Vector3(VEC_FROM_ARRAY(extrinT)));
+    body_to_lidar_tf_.setRotation(TF2_QUAT_FROM_ARRAY(extrinR));
+    aft_to_lidar_tf_ = body_to_lidar_tf_; // DEPRECTATED: use body_to_lidar_tf_ instead
+
+    if(use_intermediate_extrinsic_)
+    {
+
+        // Body -> VIO
+        bool body_to_vio_ok = true;
+        tf2::Vector3 body_to_vio_t = getVector3(body_to_vio_T, "extrin_calib.body_to_vio_T", body_to_vio_ok);
+        tf2::Quaternion body_to_vio_q = getQuaternion(body_to_vio_R, "extrin_calib.body_to_vio_R", body_to_vio_ok);
+
+        if( body_to_vio_ok )
+        {
+            has_vio_tf_ = true;
+            body_to_vio_tf_.setOrigin(body_to_vio_t);
+            body_to_vio_tf_.setRotation(body_to_vio_q);
+        }
+
+        // VIO -> Camera
+        bool vio_to_cam_ok = true;
+        tf2::Vector3 vio_to_cam_t = getVector3(vio_to_camera_T, "extrin_calib.vio_to_camera_T", vio_to_cam_ok);
+        tf2::Quaternion vio_to_cam_q = getQuaternion(vio_to_camera_R, "extrin_calib.vio_to_camera_R", vio_to_cam_ok);
+
+        if( vio_to_cam_ok )
+        {
+            vio_to_cam_tf_.setOrigin(vio_to_cam_t);
+            vio_to_cam_tf_.setRotation(vio_to_cam_q);
+        }
+
+        if( body_to_vio_ok && vio_to_cam_ok )
+        {
+            spdlog::info("Using intermediate extrinsic chain for lidar->camera transform.");
+
+            // Compose Body -> Camera
+            body_to_cam_tf_ = body_to_vio_tf_ * vio_to_cam_tf_;
+
+            // Compute transform Tcl & Rcl using Lidar -> Body -> VIO -> Camera
+            lidar_to_cam_tf_ = body_to_lidar_tf_.inverse() * body_to_cam_tf_;
+
+            has_cam_tf_ = true;
+
+            return;
+        }
+        else
+        {
+          spdlog::warn("Incomplete intermediate extrinsic parameters; fallback to direct lidar->camera extrinsic.");
+        }
+    }
+
+    // Otherwise, use direct Rcl/Pcl
+    lidar_to_cam_tf_.setOrigin(getVector3(cameraextrinT, "extrin_calib.Pcl", has_cam_tf_));
+    tf2::Quaternion q;
+    getRotationMatrix(cameraextrinR, "extrin_calib.Rcl", has_cam_tf_).getRotation(q);
+    lidar_to_cam_tf_.setRotation(q);
+}
+
+void LIVMapper::initializeComponents()
+{
+  using fast_livo::camera_loader::loadCamera;
+
   downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
   extT << VEC_FROM_ARRAY(extrinT);
-  extR << MAT_FROM_ARRAY(extrinR);
+  extR = EIGEN_QUAT_FROM_ARRAY(extrinR).toRotationMatrix();
+
+  initializeTransforms();
 
   voxelmap_manager->extT_ << VEC_FROM_ARRAY(extrinT);
-  voxelmap_manager->extR_ << MAT_FROM_ARRAY(extrinR);
+  voxelmap_manager->extR_ = extR;
 
-  if (!vk::camera_loader::loadCamera(node_, vio_manager->cam)) throw std::runtime_error("Camera model not correctly specified.");
+  if (!loadCamera(node_, vio_manager->cam)) throw std::runtime_error("Camera model not correctly specified.");
 
   vio_manager->grid_size = grid_size;
   vio_manager->patch_size = patch_size;
   vio_manager->outlier_threshold = outlier_threshold;
   vio_manager->setImuToLidarExtrinsic(extT, extR);
-  vio_manager->setLidarToCameraExtrinsic(cameraextrinR, cameraextrinT);
+
+  Eigen::Quaterniond lidar_to_cam_q(lidar_to_cam_tf_.getRotation().w(),
+                                        lidar_to_cam_tf_.getRotation().x(),
+                                        lidar_to_cam_tf_.getRotation().y(),
+                                        lidar_to_cam_tf_.getRotation().z());
+  Eigen::Matrix3d lidar_to_cam_R = lidar_to_cam_q.normalized().toRotationMatrix();
+  V3D lidar_to_cam_T = V3D(lidar_to_cam_tf_.getOrigin().x(),
+                                    lidar_to_cam_tf_.getOrigin().y(),
+                                    lidar_to_cam_tf_.getOrigin().z());
+  vio_manager->setLidarToCameraExtrinsic(lidar_to_cam_R, lidar_to_cam_T);
+
   vio_manager->state = &_state;
   vio_manager->state_propagat = &state_propagat;
   vio_manager->max_iterations = max_iterations;
@@ -269,7 +364,7 @@ void LIVMapper::initializeSubscribersAndPublishers()
   voxelmap_manager->voxel_map_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/livo2/planes", 10000);
   static_tf_timer_ = node_->create_wall_timer(
       std::chrono::seconds(10),
-      std::bind(&LIVMapper::publish_static_pandar_tf, this));
+      std::bind(&LIVMapper::publishStaticTf, this));
   tf_hold_timer_ = node_->create_wall_timer(
       std::chrono::milliseconds(20),
       std::bind(&LIVMapper::publish_tf_hold, this));
@@ -768,7 +863,7 @@ void LIVMapper::imu_prop_callback()
     posi = imu_propagate.pos_end;
     vel_i = imu_propagate.vel_end;
     q = Eigen::Quaterniond(imu_propagate.rot_end);
-    imu_prop_odom.header.frame_id = "camera_init";
+  imu_prop_odom.header.frame_id = "init_pose";
     imu_prop_odom.header.stamp = newest_imu.header.stamp;
     imu_prop_odom.pose.pose.position.x = posi.x();
     imu_prop_odom.pose.pose.position.y = posi.y();
@@ -1277,7 +1372,7 @@ void LIVMapper::publish_img_rgb(const rclcpp::Publisher<sensor_msgs::msg::Image>
   cv::Mat img_rgb = vio_manager->img_cp;
   cv_bridge::CvImage out_msg;
   out_msg.header.stamp = stamp;
-  out_msg.header.frame_id = "camera_init";
+  out_msg.header.frame_id = "init_pose";
   out_msg.encoding = sensor_msgs::image_encodings::BGR8;
   out_msg.image = img_rgb;
   if (pubImage) pubImage->publish(*out_msg.toImageMsg());
@@ -1347,7 +1442,7 @@ void LIVMapper::publish_frame_world(
     ros_pcl::toROSMsg(*pcl_w_wait_pub, laserCloudmsg); 
   }
   laserCloudmsg.header.stamp = stamp;
-  laserCloudmsg.header.frame_id = "camera_init";
+  laserCloudmsg.header.frame_id = "init_pose";
   if (pubLaserCloudFullRes) pubLaserCloudFullRes->publish(laserCloudmsg);
 
   /**************** save map ****************/
@@ -1410,7 +1505,7 @@ void LIVMapper::publish_visual_sub_map(const rclcpp::Publisher<sensor_msgs::msg:
     sensor_msgs::msg::PointCloud2 laserCloudmsg;
     ros_pcl::toROSMsg(*sub_pcl_visual_map_pub, laserCloudmsg);
     laserCloudmsg.header.stamp = stamp;
-    laserCloudmsg.header.frame_id = "camera_init";
+    laserCloudmsg.header.frame_id = "init_pose";
     if (pubSubVisualMap) pubSubVisualMap->publish(laserCloudmsg);
   }
 }
@@ -1429,7 +1524,7 @@ void LIVMapper::publish_effect_world(const rclcpp::Publisher<sensor_msgs::msg::P
   sensor_msgs::msg::PointCloud2 laserCloudFullRes3;
   ros_pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
   laserCloudFullRes3.header.stamp = stamp;
-  laserCloudFullRes3.header.frame_id = "camera_init";
+  laserCloudFullRes3.header.frame_id = "init_pose";
   if (pubLaserCloudEffect) pubLaserCloudEffect->publish(laserCloudFullRes3);
 }
 
@@ -1446,8 +1541,8 @@ template <typename T> void LIVMapper::set_posestamp(T &out)
 
 void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped, const rclcpp::Time &stamp)
 {
-  odomAftMapped.header.frame_id = "camera_init";
-  odomAftMapped.child_frame_id = "aft_mapped";
+  odomAftMapped.header.frame_id = "init_pose";
+  odomAftMapped.child_frame_id = "body";
   odomAftMapped.header.stamp = stamp;
   set_posestamp(odomAftMapped.pose.pose);
 
@@ -1460,7 +1555,7 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
   q.setZ(geoQuat.z);
   transform.setRotation(q);
 
-  // camera_init --> aft_mapped; store for zero-order hold publisher
+  // init_pose --> body; store for zero-order hold publisher
   geometry_msgs::msg::TransformStamped transform_msg;
   transform_msg.transform = fast_livo::utils::toMsg(transform);
   latest_tf_transform_ = transform_msg.transform;
@@ -1475,7 +1570,7 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
 void LIVMapper::publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr &mavros_pose_publisher, const rclcpp::Time &stamp)
 {
   msg_body_pose.header.stamp = stamp;
-  msg_body_pose.header.frame_id = "camera_init";
+  msg_body_pose.header.frame_id = "init_pose";
   set_posestamp(msg_body_pose.pose);
   if (mavros_pose_publisher) mavros_pose_publisher->publish(msg_body_pose);
 }
@@ -1483,7 +1578,7 @@ void LIVMapper::publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseS
 void LIVMapper::publish_path(const rclcpp::Time &stamp) {
   set_posestamp(msg_body_pose.pose);
   msg_body_pose.header.stamp = stamp;
-  msg_body_pose.header.frame_id = "camera_init";
+  msg_body_pose.header.frame_id = "init_pose";
   path.header.stamp = stamp;
   path.poses.push_back(msg_body_pose);
   if (pubPath)
@@ -1492,21 +1587,28 @@ void LIVMapper::publish_path(const rclcpp::Time &stamp) {
     spdlog::warn("Path publisher is nullptr.");
 }
 
-void LIVMapper::publish_static_pandar_tf() {
+void LIVMapper::publishStaticTf() {
   if (!static_tf_broadcaster_)
     return;
-  geometry_msgs::msg::TransformStamped static_tf;
-  static_tf.header.stamp = node_->now();
-  static_tf.header.frame_id = "aft_mapped";
-  static_tf.child_frame_id = "PandarXT-32";
-  static_tf.transform.translation.x = 0.0;
-  static_tf.transform.translation.y = 0.0;
-  static_tf.transform.translation.z = 0.0;
-  static_tf.transform.rotation.x = -0.7071068;
-  static_tf.transform.rotation.y = 0.7071068;
-  static_tf.transform.rotation.z = 0.0;
-  static_tf.transform.rotation.w = 0.0;
-  static_tf_broadcaster_->sendTransform(static_tf);
+  const auto stamp = node_->now();
+  std::vector<geometry_msgs::msg::TransformStamped> tfs;
+
+  tfs.push_back(fast_livo::utils::toMsg(body_to_lidar_tf_, stamp, "body", lidar_frame_id_));
+
+  if (has_vio_tf_)
+  {
+    tfs.push_back(fast_livo::utils::toMsg(body_to_vio_tf_, stamp, "body", "vio"));
+  }
+  if (has_cam_tf_)
+  {
+    tfs.push_back(fast_livo::utils::toMsg(vio_to_cam_tf_, stamp, "vio", "camera"));
+  }
+  
+  tfs.push_back(fast_livo::utils::toMsg(body_to_cam_tf_, stamp, "body", "camera_from_body"));
+  tfs.push_back(fast_livo::utils::toMsg(lidar_to_cam_tf_, stamp, "os_sensor", "camera_from_lidar"));
+
+
+  static_tf_broadcaster_->sendTransform(tfs);
 }
 
 void LIVMapper::publish_tf_hold() {
@@ -1517,26 +1619,13 @@ void LIVMapper::publish_tf_hold() {
   rclcpp::Duration delta = now - latest_tf_wall_time_;
   rclcpp::Time stamped_time = latest_tf_time_ + delta;
 
-  // camera_init -> aft_mapped (latest held)
+  // init_pose -> body (latest held)
   geometry_msgs::msg::TransformStamped transform_cam_to_aft;
   transform_cam_to_aft.header.stamp = stamped_time;
-  transform_cam_to_aft.header.frame_id = "camera_init";
-  transform_cam_to_aft.child_frame_id = "aft_mapped";
+  transform_cam_to_aft.header.frame_id = "init_pose";
+  transform_cam_to_aft.child_frame_id = "body";
   transform_cam_to_aft.transform = latest_tf_transform_;
   tf_broadcaster_->sendTransform(transform_cam_to_aft);
-
-  // PandarXT-32 -> camera_init using zero-order hold and fixed aft->pandar
-  tf2::Transform cam_to_aft_tf;
-  fast_livo::utils::fromMsg(latest_tf_transform_, cam_to_aft_tf);
-  tf2::Transform cam_to_pandar_tf = cam_to_aft_tf * aft_to_pandar_tf_;
-  tf2::Transform pandar_to_cam_tf = cam_to_pandar_tf.inverse();
-
-  geometry_msgs::msg::TransformStamped transform_pandar_to_cam;
-  transform_pandar_to_cam.header.stamp = stamped_time;
-  transform_pandar_to_cam.header.frame_id = "PandarXT-32";
-  transform_pandar_to_cam.child_frame_id = "camera_init";
-  transform_pandar_to_cam.transform = fast_livo::utils::toMsg(pandar_to_cam_tf);
-  tf_broadcaster_->sendTransform(transform_pandar_to_cam);
 }
 
 rclcpp::Time LIVMapper::makeTimeFromSeconds(double seconds) const

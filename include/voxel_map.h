@@ -12,22 +12,18 @@ which is included as part of this source code package.
 
 
 #pragma once
-#include "common_lib.h"
 #include <Eigen/Dense>
-#include <fstream>
 #include <math.h>
-#include <mutex>
 #include <omp.h>
 #include <pcl/common/io.h>
-
 #include <rclcpp/node.hpp>
 #include <rclcpp/rclcpp.hpp>
-
-#include <thread>
 #include <unistd.h>
 #include <unordered_map>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+
+#include "common_lib.h"
 
 #define VOXELMAP_HASH_P 116101
 #define VOXELMAP_MAX_N 10000000000

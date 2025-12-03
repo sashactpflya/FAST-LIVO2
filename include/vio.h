@@ -13,14 +13,15 @@ which is included as part of this source code package.
 
 #pragma once
 #include "voxel_map.h"
-#include "feature.h"
+
 #include <opencv2/imgproc/imgproc_c.h>
 #include <pcl/filters/voxel_grid.h>
-#include <set>
 #include <vikit/math_utils.h>
 #include <vikit/robust_cost.h>
 #include <vikit/vision.h>
 #include <vikit/pinhole_camera.h>
+
+#include "visual_point.h"
 
 struct SubSparseMap
 {
@@ -146,6 +147,7 @@ public:
   void generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg);
   void setImuToLidarExtrinsic(const V3D &transl, const M3D &rot);
   void setLidarToCameraExtrinsic(vector<double> &R, vector<double> &P);
+  void setLidarToCameraExtrinsic(const M3D &R, const V3D &P);
   void initializeVIO();
   void getImagePatch(cv::Mat img, V2D pc, float *patch_tmp, int level);
   void computeProjectionJacobian(V3D p, MD(2, 3) & J);
