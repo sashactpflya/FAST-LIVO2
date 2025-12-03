@@ -179,6 +179,8 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(robosense_ros::Point,
                                   (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(double, timestamp, timestamp)(std::uint16_t, ring, ring))
 /*****************/
 
+#define MAX_LINE_LIDAR 128
+
 class Preprocess
 {
 public:
@@ -192,9 +194,11 @@ public:
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
 
   // sensor_msgs::PointCloud2::ConstSharedPtr pointcloud;
-  PointCloudXYZI pl_full, pl_corn, pl_surf;
-  PointCloudXYZI pl_buff[128]; // maximum 128 line lidar
-  vector<orgtype> typess[128]; // maximum 128 line lidar
+  PointCloudXYZI pl_full; ///< full resolution point cloud
+  PointCloudXYZI pl_corn; ///< corner points
+  PointCloudXYZI pl_surf; ///< surface points
+  PointCloudXYZI pl_buff[MAX_LINE_LIDAR]; // maximum 128 line lidar
+  vector<orgtype> typess[MAX_LINE_LIDAR]; // maximum 128 line lidar
   int lidar_type, point_filter_num, N_SCANS;
   
   double blind, blind_sqr;
@@ -204,6 +208,7 @@ public:
 private:
 //   void avia_handler(const livox_ros_driver::CustomMsg::ConstSharedPtr &msg);
   void oust64_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+  void oust32_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void xt32_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void Pandar128_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);

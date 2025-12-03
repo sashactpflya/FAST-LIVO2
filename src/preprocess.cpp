@@ -68,6 +68,10 @@ void Preprocess::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &ms
     oust64_handler(msg);
     break;
 
+  case OUST32:
+    oust32_handler(msg);
+    break;
+
   case VELO16:
     velodyne_handler(msg);
     break;
@@ -248,7 +252,7 @@ void Preprocess::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstShared
   pl_surf.clear();
   pl_corn.clear();
   pl_full.clear();
-  pcl::PointCloud<ouster_ros::Point> pl_orig;
+  pcl::PointCloud<ouster_ros::FlyaPoint> pl_orig;
   ros_pcl::fromROSMsg(*msg, pl_orig);
   int plsize = pl_orig.size();
   pl_corn.reserve(plsize);
@@ -275,7 +279,7 @@ void Preprocess::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstShared
       added_pt.normal_x = 0;
       added_pt.normal_y = 0;
       added_pt.normal_z = 0;
-      double yaw_angle = atan2(added_pt.y, added_pt.x) * 57.3;
+      double yaw_angle = atan2(added_pt.y, added_pt.x) * 57.3; // Magic number 57.3 = 180/pi
       if (yaw_angle >= 180.0) yaw_angle -= 360.0;
       if (yaw_angle <= -180.0) yaw_angle += 360.0;
 
@@ -342,6 +346,13 @@ void Preprocess::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstShared
   }
   // pub_func(pl_surf, pub_full, msg->header.stamp);
   // pub_func(pl_surf, pub_corn, msg->header.stamp);
+}
+
+void Preprocess::oust32_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg)
+{
+  // Same processing as the 64-line Ouster path but intended for full, non-cropped 32-line data.
+  // Uses the configured N_SCANS (typically 32) to bucket rings and extract features.
+  oust64_handler(msg);
 }
 
 #define MAX_LINE_NUM 64
