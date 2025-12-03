@@ -11,19 +11,23 @@ which is included as part of this source code package.
 */
 
 #include "LIVMapper.h"
-#include <chrono>
+
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/filter.h>
 #include <rclcpp/clock.hpp>
+#include <spdlog/spdlog.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
-#include <spdlog/spdlog.h>
 #include <tf2_ros/static_transform_broadcaster.h>
+
 #include "utils/color.h"
 #include "utils/ros_tf2_conversions.hpp"
 #include "utils/ros_pcl_conversions.h"
+#include "utils/camera_loader.hpp"
+
 
 LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
     : extT(0, 0, 0),

@@ -31,7 +31,6 @@ which is included as part of this source code package.
 #include "preprocess.h"
 #include <cv_bridge/cv_bridge.hpp>
 #include <nav_msgs/msg/path.hpp>
-#include <vikit/camera_loader.h>
 
 class LIVMapper
 {

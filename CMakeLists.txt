@@ -99,7 +99,6 @@ find_package(Sophus CONFIG REQUIRED)
 find_package(Boost CONFIG REQUIRED COMPONENTS thread system)
 
 add_subdirectory(rpg_vikit/vikit_common)
-add_subdirectory(rpg_vikit/vikit_ros)
 
 # ROS 2 dependencies
 find_package(ament_cmake CONFIG REQUIRED)
@@ -169,7 +168,6 @@ target_link_libraries(fast_livo_interface INTERFACE
     Sophus::Sophus
     Boost::boost
     vikit_common
-    vikit_ros
     ${FAST_LIVO_OPENMP_TARGET}
 )
 target_include_directories(fast_livo_interface INTERFACE
