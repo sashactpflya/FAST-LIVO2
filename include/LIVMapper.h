@@ -12,6 +12,7 @@ which is included as part of this source code package.
 
 
 #pragma once
+#include <functional>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -34,6 +35,26 @@ which is included as part of this source code package.
 
 namespace fast_livo
 {
+
+struct AppPublishers
+{
+  std::function<void(const visualization_msgs::msg::Marker &)> plane_marker = nullptr;
+  std::function<void(const visualization_msgs::msg::MarkerArray &)> voxel_markers = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> laser_cloud_full_res = nullptr;
+  std::function<void(const visualization_msgs::msg::MarkerArray &)> normal_markers = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> sub_visual_map = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> laser_cloud_effect = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> laser_cloud_map = nullptr;
+  std::function<void(const nav_msgs::msg::Odometry &)> odom_aft_mapped = nullptr;
+  std::function<void(const nav_msgs::msg::Path &)> path = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> laser_cloud_dynamic = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> laser_cloud_dynamic_removed = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> laser_cloud_dynamic_debug = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> visual_patches_body = nullptr;
+  std::function<void(const sensor_msgs::msg::Image &)> image = nullptr;
+  std::function<void(const geometry_msgs::msg::PoseStamped &)> mavros_pose = nullptr;
+  std::function<void(const nav_msgs::msg::Odometry &)> imu_prop_odom = nullptr;
+};
 
 class LIVMapper
 {
@@ -76,8 +97,12 @@ public:
   template <typename T> void set_posestamp(T &out);
   template <typename T> void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
   template <typename T> Eigen::Matrix<T, 3, 1> pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi);
+  void setAppPublishers(AppPublishers publishers);
   cv::Mat getImageFromMsg(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg);
   rclcpp::Time makeTimeFromSeconds(double seconds) const;
+
+  // Offline app interfaces
+  void resetRosInterfaces();
 
   std::mutex mtx_buffer, mtx_buffer_imu_prop;
   std::condition_variable sig_buffer;
@@ -234,7 +259,9 @@ public:
     std::string lidar_frame_id_ = "lidar_frame";
     std::string vio_frame_id_ = "vio";
     std::string camera_frame_id_ = "camera";
+    AppPublishers app_publishers_;
 
+    bool checkParametersValidity() const;
     void initializeTransforms();
     void publishStaticTf();
     void publish_tf_hold();

@@ -39,6 +39,7 @@ using namespace Sophus;
 
 enum LID_TYPE
 {
+  UNKNOWN = 0,
   AVIA = 1,
   VELO16 = 2,
   OUST64 = 3,

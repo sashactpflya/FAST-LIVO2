@@ -45,6 +45,12 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
   p_imu = std::make_shared<ImuProcess>();
 
   readParameters(node_);
+
+  if ( !checkParametersValidity())
+  {
+    throw std::runtime_error("Invalid parameters detected. See log for details.");
+  }
+
   lidar_frame_id_ = getLidarFrameName(static_cast<LID_TYPE>(p_pre->lidar_type));
   vio_frame_id_ = "vio";
   camera_frame_id_ = "camera";
@@ -144,6 +150,46 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
 
   use_intermediate_extrinsic_ = node->declare_parameter<bool>("extrin_calib.use_intermediate_extrinsic", true);
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
+}
+
+bool LIVMapper::checkParametersValidity() const
+{
+    bool valid = true;
+
+    if ( lidar_en == 0 && img_en == 0 )
+    {
+        spdlog::error("Both lidar_en and img_en are set to 0; at least one sensor must be enabled.");
+        valid = false;
+    }
+
+    if ( p_pre->lidar_type == UNKNOWN )
+    {
+        spdlog::error("Invalid lidar_type: {}. Please choose a valid LID_TYPE enum value.", p_pre->lidar_type);
+        valid = false;
+    }
+
+    if( extrinT.size() != 3 )
+    {
+        spdlog::error("extrin_calib.extrinsic_T should have exactly 3 elements.");
+        valid = false;
+    }
+    if( extrinR.size() != 4 )
+    {
+        spdlog::error("extrin_calib.extrinsic_R should have exactly 4 elements (quaternion).");
+        valid = false;
+    }
+    if( cameraextrinT.size() != 3 )
+    {
+        spdlog::error("extrin_calib.Pcl should have exactly 3 elements.");
+        valid = false;
+    }
+    if( cameraextrinR.size() != 9 )
+    {
+        spdlog::error("extrin_calib.Rcl should have exactly 9 elements (rotation matrix).");
+        valid = false;
+    }
+
+    return valid;
 }
 
 void LIVMapper::initializeTransforms()
@@ -369,6 +415,24 @@ void LIVMapper::initializeSubscribersAndPublishers()
   tf_hold_timer_ = node_->create_wall_timer(
       std::chrono::milliseconds(20),
       std::bind(&LIVMapper::publish_tf_hold, this));
+
+  app_publishers_.plane_marker = [pub = plane_pub](const visualization_msgs::msg::Marker &msg) { pub->publish(msg); };
+  app_publishers_.voxel_markers = [pub = voxel_pub](const visualization_msgs::msg::MarkerArray &msg) { pub->publish(msg); };
+  app_publishers_.laser_cloud_full_res = [pub = pubLaserCloudFullRes](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.normal_markers = [pub = pubNormal](const visualization_msgs::msg::MarkerArray &msg) { pub->publish(msg); };
+  app_publishers_.sub_visual_map = [pub = pubSubVisualMap](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.laser_cloud_effect = [pub = pubLaserCloudEffect](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.laser_cloud_map = [pub = pubLaserCloudMap](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.odom_aft_mapped = [pub = pubOdomAftMapped](const nav_msgs::msg::Odometry &msg) { pub->publish(msg); };
+  app_publishers_.path = [pub = pubPath](const nav_msgs::msg::Path &msg) { pub->publish(msg); };
+  app_publishers_.laser_cloud_dynamic = [pub = pubLaserCloudDyn](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.laser_cloud_dynamic_removed = [pub = pubLaserCloudDynRmed](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.laser_cloud_dynamic_debug = [pub = pubLaserCloudDynDbg](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.visual_patches_body = [pub = pubVisualPatchesBody](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
+  app_publishers_.image = [pub = pubImage](const sensor_msgs::msg::Image &msg) { pub->publish(msg); };
+  app_publishers_.mavros_pose = [pub = mavros_pose_publisher](const geometry_msgs::msg::PoseStamped &msg) { pub->publish(msg); };
+  app_publishers_.imu_prop_odom = [pub = pubImuPropOdom](const nav_msgs::msg::Odometry &msg) { pub->publish(msg); };
+
 }
 
 void LIVMapper::handleFirstFrame() 
@@ -876,7 +940,7 @@ void LIVMapper::imu_prop_callback()
     imu_prop_odom.twist.twist.linear.x = vel_i.x();
     imu_prop_odom.twist.twist.linear.y = vel_i.y();
     imu_prop_odom.twist.twist.linear.z = vel_i.z();
-    if (pubImuPropOdom) pubImuPropOdom->publish(imu_prop_odom);
+    if (app_publishers_.imu_prop_odom) app_publishers_.imu_prop_odom(imu_prop_odom);
   }
   mtx_buffer_imu_prop.unlock();
 }
@@ -1370,13 +1434,14 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
 
 void LIVMapper::publish_img_rgb(const rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr &pubImage, VIOManagerPtr vio_manager, const rclcpp::Time &stamp)
 {
+  (void)pubImage;
   cv::Mat img_rgb = vio_manager->img_cp;
   cv_bridge::CvImage out_msg;
   out_msg.header.stamp = stamp;
   out_msg.header.frame_id = "init_pose";
   out_msg.encoding = sensor_msgs::image_encodings::BGR8;
   out_msg.image = img_rgb;
-  if (pubImage) pubImage->publish(*out_msg.toImageMsg());
+  if (app_publishers_.image) app_publishers_.image(*out_msg.toImageMsg());
 }
 
 void LIVMapper::publish_frame_world(
@@ -1444,7 +1509,8 @@ void LIVMapper::publish_frame_world(
   }
   laserCloudmsg.header.stamp = stamp;
   laserCloudmsg.header.frame_id = "init_pose";
-  if (pubLaserCloudFullRes) pubLaserCloudFullRes->publish(laserCloudmsg);
+  (void)pubLaserCloudFullRes;
+  if (app_publishers_.laser_cloud_full_res) app_publishers_.laser_cloud_full_res(laserCloudmsg);
 
   /**************** save map ****************/
   /* 1. make sure you have enough memories
@@ -1497,6 +1563,7 @@ void LIVMapper::publish_frame_world(
 
 void LIVMapper::publish_visual_sub_map(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubSubVisualMap, const rclcpp::Time &stamp)
 {
+  (void)pubSubVisualMap;
   PointCloudXYZI::Ptr laserCloudFullRes(visual_sub_map);
   int size = laserCloudFullRes->points.size(); if (size == 0) return;
   PointCloudXYZI::Ptr sub_pcl_visual_map_pub(new PointCloudXYZI());
@@ -1507,7 +1574,7 @@ void LIVMapper::publish_visual_sub_map(const rclcpp::Publisher<sensor_msgs::msg:
     ros_pcl::toROSMsg(*sub_pcl_visual_map_pub, laserCloudmsg);
     laserCloudmsg.header.stamp = stamp;
     laserCloudmsg.header.frame_id = "init_pose";
-    if (pubSubVisualMap) pubSubVisualMap->publish(laserCloudmsg);
+    if (app_publishers_.sub_visual_map) app_publishers_.sub_visual_map(laserCloudmsg);
   }
 }
 
@@ -1526,7 +1593,8 @@ void LIVMapper::publish_effect_world(const rclcpp::Publisher<sensor_msgs::msg::P
   ros_pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
   laserCloudFullRes3.header.stamp = stamp;
   laserCloudFullRes3.header.frame_id = "init_pose";
-  if (pubLaserCloudEffect) pubLaserCloudEffect->publish(laserCloudFullRes3);
+  (void)pubLaserCloudEffect;
+  if (app_publishers_.laser_cloud_effect) app_publishers_.laser_cloud_effect(laserCloudFullRes3);
 }
 
 template <typename T> void LIVMapper::set_posestamp(T &out)
@@ -1542,6 +1610,7 @@ template <typename T> void LIVMapper::set_posestamp(T &out)
 
 void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped, const rclcpp::Time &stamp)
 {
+  (void)pubOdomAftMapped;
   odomAftMapped.header.frame_id = "init_pose";
   odomAftMapped.child_frame_id = "body";
   odomAftMapped.header.stamp = stamp;
@@ -1564,16 +1633,16 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
   latest_tf_wall_time_ = node_->now();
   latest_tf_valid_ = true;
 
-
-  if (pubOdomAftMapped) pubOdomAftMapped->publish(odomAftMapped);
+  if (app_publishers_.odom_aft_mapped) app_publishers_.odom_aft_mapped(odomAftMapped);
 }
 
 void LIVMapper::publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr &mavros_pose_publisher, const rclcpp::Time &stamp)
 {
+  (void)mavros_pose_publisher;
   msg_body_pose.header.stamp = stamp;
   msg_body_pose.header.frame_id = "init_pose";
   set_posestamp(msg_body_pose.pose);
-  if (mavros_pose_publisher) mavros_pose_publisher->publish(msg_body_pose);
+  if (app_publishers_.mavros_pose) app_publishers_.mavros_pose(msg_body_pose);
 }
 
 void LIVMapper::publish_path(const rclcpp::Time &stamp) {
@@ -1582,8 +1651,8 @@ void LIVMapper::publish_path(const rclcpp::Time &stamp) {
   msg_body_pose.header.frame_id = "init_pose";
   path.header.stamp = stamp;
   path.poses.push_back(msg_body_pose);
-  if (pubPath)
-    pubPath->publish(path);
+  if (app_publishers_.path)
+    app_publishers_.path(path);
   else
     spdlog::warn("Path publisher is nullptr.");
 }
@@ -1642,4 +1711,29 @@ rclcpp::Time LIVMapper::makeTimeFromSeconds(double seconds) const
   }
   return node_->get_clock()->now();
 }
+
+void LIVMapper::setAppPublishers(AppPublishers publishers)
+{
+  app_publishers_ = std::move(publishers);
+}
+
+void LIVMapper::resetRosInterfaces()
+{
+    // Reset all ROS subscribers and publishers to nullptr
+    pubLaserCloudFullRes = nullptr;
+    pubOdomAftMapped = nullptr;
+    pubPath = nullptr;
+    pubSubVisualMap = nullptr;
+    pubVisualPatchesBody = nullptr;
+    pubLaserCloudEffect = nullptr;
+    mavros_pose_publisher = nullptr;
+    pubImage = nullptr;
+    sub_pcl = nullptr;
+    sub_imu = nullptr;
+    sub_img = nullptr;
+    
+    // Reset timer callbacks
+    imu_prop_timer = nullptr;
+}
+
 } // namespace fast_livo
