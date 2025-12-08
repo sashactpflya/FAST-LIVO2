@@ -23,6 +23,8 @@ which is included as part of this source code package.
 
 #include "visual_point.h"
 
+namespace fast_livo {
+
 struct SubSparseMap
 {
   vector<float> propa_errors;
@@ -184,3 +186,5 @@ public:
   // pcl::VoxelGrid<PointType> downSizeFilter;
 };
 typedef std::shared_ptr<VIOManager> VIOManagerPtr;
+
+}

@@ -13,6 +13,9 @@ which is included as part of this source code package.
 #pragma once
 #include "visual_point.h"
 
+namespace fast_livo
+{
+
 // A salient image region that is tracked across frames.
 struct Feature
 {
@@ -51,3 +54,4 @@ struct Feature
   }
 };
 
+} // namespace fast_livo

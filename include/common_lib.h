@@ -19,6 +19,8 @@ which is included as part of this source code package.
 #include <sensor_msgs/msg/imu.hpp>
 #include <sophus/se3.hpp>
 
+namespace fast_livo {
+
 using namespace std;
 using namespace Eigen;
 using namespace Sophus;
@@ -271,3 +273,4 @@ auto set_pose6d(const double t, const Eigen::Matrix<T, 3, 1> &a, const Eigen::Ma
   return move(rot_kp);
 }
 
+} // namespace fast_livo

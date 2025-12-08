@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
   auto node = std::make_shared<rclcpp::Node>(
     "fast_livo", rclcpp::NodeOptions()
   );
-  LIVMapper mapper(node); 
+  fast_livo::LIVMapper mapper(node); 
   mapper.initializeSubscribersAndPublishers();
   mapper.run();
   rclcpp::shutdown();

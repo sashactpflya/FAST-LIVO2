@@ -16,6 +16,9 @@ which is included as part of this source code package.
 #include "common_lib.h"
 #include "frame.h"
 
+namespace fast_livo
+{
+
 class Feature;
 
 /// A visual map point on the surface of the scene.
@@ -44,3 +47,4 @@ public:
   bool getCloseViewObs(const Vector3d &pos, Feature *&obs, const Vector2d &cur_px) const;
 };
 
+} // namespace fast_livo

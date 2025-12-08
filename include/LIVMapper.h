@@ -32,6 +32,9 @@ which is included as part of this source code package.
 #include <cv_bridge/cv_bridge.hpp>
 #include <nav_msgs/msg/path.hpp>
 
+namespace fast_livo
+{
+
 class LIVMapper
 {
 public:
@@ -237,3 +240,5 @@ public:
     void publish_tf_hold();
     tf2::Transform computeBodyToLidarTf() const;
 };
+
+} // namespace fast_livo

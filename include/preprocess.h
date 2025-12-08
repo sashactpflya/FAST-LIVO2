@@ -181,6 +181,9 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(robosense_ros::Point,
 
 #define MAX_LINE_LIDAR 128
 
+namespace fast_livo
+{
+
 class Preprocess
 {
 public:
@@ -232,3 +235,4 @@ private:
 };
 typedef std::shared_ptr<Preprocess> PreprocessPtr;
 
+} // namespace fast_livo

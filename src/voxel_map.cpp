@@ -19,6 +19,9 @@ which is included as part of this source code package.
 #include "utils/ros_tf2_conversions.hpp"
 #include "utils/time.hpp"
 
+namespace fast_livo
+{
+
 void calcBodyCov(Eigen::Vector3d &pb, const float range_inc, const float degree_inc, Eigen::Matrix3d &cov)
 {
   if (pb[2] == 0) pb[2] = 0.0001;
@@ -1004,3 +1007,5 @@ void VoxelMapManager::clearMemOutOfMap(const int &x_max, const int &x_min,
   }
   spdlog::debug("{}[ VOXEL MAP ]: Delete {:d} root voxels{}", RED, delete_voxel_count, RESET);
 }
+
+} // namespace fast_livo

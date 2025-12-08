@@ -20,6 +20,9 @@ which is included as part of this source code package.
 #include <utils/so3_math.h>
 #include <fstream>
 
+namespace fast_livo
+{
+
 // TODO: Rename function for clarity
 inline const bool time_list(PointType &x, PointType &y) { return (x.curvature < y.curvature); }
 
@@ -89,3 +92,5 @@ private:
   bool exposure_estimate_en = true;
 };
 typedef std::shared_ptr<ImuProcess> ImuProcessPtr;
+
+} // namespace fast_livo

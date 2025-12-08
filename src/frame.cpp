@@ -18,6 +18,8 @@ which is included as part of this source code package.
 #include <vikit/performance_monitor.h>
 #include <vikit/vision.h>
 
+namespace fast_livo {
+
 int Frame::frame_counter_ = 0;
 
 Frame::Frame(vk::AbstractCamera *cam, const cv::Mat &img)
@@ -62,3 +64,5 @@ void createImgPyramid(const cv::Mat &img_level_0, int n_levels, ImgPyr &pyr)
 }
 
 } // namespace frame_utils
+
+}  // namespace fast_livo

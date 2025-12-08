@@ -28,6 +28,9 @@ which is included as part of this source code package.
 #define VOXELMAP_HASH_P 116101
 #define VOXELMAP_MAX_N 10000000000
 
+namespace fast_livo
+{
+
 static int voxel_plane_id = 0;
 
 typedef struct VoxelMapConfig
@@ -254,3 +257,4 @@ private:
 };
 typedef std::shared_ptr<VoxelMapManager> VoxelMapManagerPtr;
 
+} // namespace fast_livo

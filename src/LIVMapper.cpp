@@ -29,6 +29,8 @@ which is included as part of this source code package.
 #include "utils/camera_loader.hpp"
 #include "utils/time.hpp"
 
+namespace fast_livo {
+
 LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
     : extT(0, 0, 0),
       extR(M3D::Identity()),
@@ -1640,3 +1642,4 @@ rclcpp::Time LIVMapper::makeTimeFromSeconds(double seconds) const
   }
   return node_->get_clock()->now();
 }
+} // namespace fast_livo

@@ -17,6 +17,9 @@ which is included as part of this source code package.
 #include "feature.h"
 #include "utils/time.hpp"
 
+namespace fast_livo
+{
+
 VIOManager::VIOManager() {
   // downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
 }
@@ -1930,3 +1933,5 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   // cv::putText(img_cp, text, origin, cv::FONT_HERSHEY_COMPLEX, 0.6, cv::Scalar(255, 255, 255), 1, 8, 0);
   // cv::imwrite("/home/chunran/Desktop/raycasting/" + std::to_string(new_frame_->id_) + ".png", img_cp);
 }
+
+} // namespace fast_livo
