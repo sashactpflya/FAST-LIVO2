@@ -70,7 +70,7 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
   root_dir = ROOT_DIR;
   initializeFiles();
   initializeComponents();
-  path.header.stamp = node_->now();
+  path.header.stamp = rclcpp::Time();
   path.header.frame_id = "init_pose";
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
@@ -1005,9 +1005,9 @@ void LIVMapper::standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstShare
   if (!lidar_en) return;
   mtx_buffer.lock();
 
-  double cur_head_time = rclcpp::Time(msg->header.stamp).seconds() + lidar_time_offset;
+  rclcpp::Time adjusted_stamp = msg->header.stamp + rclcpp::Duration::from_seconds(lidar_time_offset);
   // cout<<"got feature"<<endl;
-  if (cur_head_time < last_timestamp_lidar)
+  if (last_timestamp_lidar_ && adjusted_stamp < *last_timestamp_lidar_)
   {
     RCLCPP_ERROR(node_->get_logger(), "lidar loop back, clear buffer");
     lid_raw_data_buffer.clear();
@@ -1016,8 +1016,8 @@ void LIVMapper::standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstShare
   PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
   p_pre->process(msg, ptr);
   lid_raw_data_buffer.push_back(ptr);
-  lid_header_time_buffer.push_back(cur_head_time);
-  last_timestamp_lidar = cur_head_time;
+  lid_header_time_buffer.push_back(adjusted_stamp.seconds());
+  last_timestamp_lidar_ = adjusted_stamp;
 
   mtx_buffer.unlock();
   sig_buffer.notify_all();
@@ -1070,52 +1070,51 @@ void LIVMapper::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr &msg_in)
 {
   if (!imu_en) return;
 
-  if (last_timestamp_lidar < 0.0)
+  if (!last_timestamp_lidar_)
     return;
   sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
  
   // Apply IMU time offset
-  double timestamp = rclcpp::Time(msg->header.stamp).seconds() + imu_time_offset;
+  rclcpp::Time stamp = msg->header.stamp;
+  stamp += rclcpp::Duration::from_seconds(imu_time_offset);
 
   // Check for large time difference (potential desync)
-  if (fabs(last_timestamp_lidar - timestamp) > 0.5 && (!ros_driver_fix_en)) {
-    spdlog::warn("IMU and LiDAR not synced! delta time: {:.4f}", 
-                 last_timestamp_lidar - timestamp);
+  double time_diff = (*last_timestamp_lidar_ - stamp).seconds();
+
+  if (fabs(time_diff) > 0.5 && (!ros_driver_fix_en)) {
+    spdlog::warn("IMU and LiDAR not synced! delta time: {:.4f}", time_diff);
   }
 
   // [@sashactpflya] Fixed: Improved ros_driver_fix to avoid drift
   // Only apply correction if ros_driver_fix is enabled AND difference is significant
-  if (ros_driver_fix_en) {
-    double time_diff = last_timestamp_lidar - timestamp;
     // Only fix if the drift is more than 0.1s (likely a driver bug)
-    if (fabs(time_diff) > 0.1) {
-      double correction = std::round(time_diff);
-      timestamp += correction;
-      spdlog::debug("Applied ros_driver_fix correction: {:.4f}s", correction);
-    }
-  }
+if (ros_driver_fix_en && fabs(time_diff) > 0.1) {
+    auto correction = rclcpp::Duration::from_seconds(std::round(time_diff));
+    stamp += correction;
+    spdlog::debug("Applied ros_driver_fix correction: {:.4f}s", correction.seconds());
+}
   
   // Update message timestamp
-  msg->header.stamp = rclcpp::Time(static_cast<int64_t>(timestamp * 1e9));
+  msg->header.stamp = stamp;
 
   mtx_buffer.lock();
 
   // Check for time going backwards
-  if (last_timestamp_imu > 0.0 && timestamp < last_timestamp_imu) {
+  if (last_timestamp_imu_ && *last_timestamp_imu_ > stamp) {
     mtx_buffer.unlock();
     sig_buffer.notify_all();
     spdlog::error("IMU loop back, offset: {:.4f}", 
-                  last_timestamp_imu - timestamp);
+                  (*last_timestamp_imu_ - stamp).seconds());
     return;
   }
 
   // Check for unreasonable time jumps
-  if (last_timestamp_imu > 0.0 && (timestamp - last_timestamp_imu) > 0.2) {
-    spdlog::warn("IMU timestamp jump: {:.4f}s", timestamp - last_timestamp_imu);
+  if (last_timestamp_imu_ && (stamp - *last_timestamp_imu_) > rclcpp::Duration::from_seconds(0.2)) {
+    spdlog::warn("IMU timestamp jump: {:.4f}s", (stamp - *last_timestamp_imu_).seconds());
     // Don't reject, but warn
   }
 
-  last_timestamp_imu = timestamp;
+  last_timestamp_imu_ = stamp;
 
   imu_buffer.push_back(msg);
   // cout<<"got imu: "<<timestamp<<" imu size "<<imu_buffer.size()<<endl;
@@ -1160,7 +1159,7 @@ void LIVMapper::img_cbk(const sensor_msgs::msg::Image::ConstSharedPtr &msg_in)
   if (abs(msg_header_time - last_timestamp_img) < 0.001)
     return;
   spdlog::debug("Get image, its header time: {:.6f}", msg_header_time);
-  if (last_timestamp_lidar < 0)
+  if (!last_timestamp_lidar_)
     return;
 
   if (msg_header_time < last_timestamp_img) {
@@ -1199,6 +1198,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
   if (lid_raw_data_buffer.empty() && lidar_en) return false;
   if (img_buffer.empty() && img_en) return false;
   if (imu_buffer.empty() && imu_en) return false;
+  if (!last_timestamp_imu_ && !last_timestamp_lidar_) return false;
 
   switch (slam_mode_)
   {
@@ -1217,7 +1217,7 @@ bool LIVMapper::sync_packages(LidarMeasureGroup &meas)
       lidar_pushed = true;                                                                                       // flag
     }
 
-    if (imu_en && last_timestamp_imu < meas.lidar_frame_end_time)
+    if (imu_en && last_timestamp_imu_->seconds() < meas.lidar_frame_end_time)
     { // waiting imu message needs to be
       // larger than _lidar_frame_end_time,
       // make sure complete propagate.
@@ -1630,7 +1630,7 @@ void LIVMapper::publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry
   transform_msg.transform = fast_livo::utils::toMsg(transform);
   latest_tf_transform_ = transform_msg.transform;
   latest_tf_time_ = stamp;
-  latest_tf_wall_time_ = node_->now();
+  latest_tf_wall_time_ = last_timestamp_imu_.value_or(stamp);
   latest_tf_valid_ = true;
 
   if (app_publishers_.odom_aft_mapped) app_publishers_.odom_aft_mapped(odomAftMapped);
@@ -1658,9 +1658,9 @@ void LIVMapper::publish_path(const rclcpp::Time &stamp) {
 }
 
 void LIVMapper::publishStaticTf() {
-  if (!static_tf_broadcaster_)
+  if (!static_tf_broadcaster_ || !last_timestamp_imu_)
     return;
-  const auto stamp = node_->now();
+  const auto stamp = *last_timestamp_imu_; // Used as "now"
   std::vector<geometry_msgs::msg::TransformStamped> tfs;
 
   tfs.push_back(fast_livo::utils::toMsg(body_to_lidar_tf_, stamp, "body", lidar_frame_id_));
@@ -1685,12 +1685,13 @@ void LIVMapper::publishStaticTf() {
 }
 
 void LIVMapper::publish_tf_hold() {
-  if (!latest_tf_valid_ || !tf_broadcaster_)
+  if (!latest_tf_valid_ || !tf_broadcaster_ || !last_timestamp_imu_)
     return;
-  const auto now = node_->now();
+
   // Use zero-order hold from last odometry stamp, advancing by elapsed wall time
-  rclcpp::Duration delta = now - latest_tf_wall_time_;
-  rclcpp::Time stamped_time = latest_tf_time_ + delta;
+  const int64_t delta_ns = last_timestamp_imu_->nanoseconds() - latest_tf_wall_time_.nanoseconds();
+  if (delta_ns < 0) return; // avoid publishing with negative offset
+  rclcpp::Time stamped_time(latest_tf_time_.nanoseconds() + delta_ns);
 
   // init_pose -> body (latest held)
   geometry_msgs::msg::TransformStamped transform_cam_to_aft;
@@ -1705,9 +1706,7 @@ rclcpp::Time LIVMapper::makeTimeFromSeconds(double seconds) const
 {
   if (std::isfinite(seconds) && seconds >= 0.0)
   {
-    constexpr double kNanoSecondsPerSecond = 1e9;
-    const auto nanoseconds = static_cast<int64_t>(seconds * kNanoSecondsPerSecond);
-    return rclcpp::Time(nanoseconds, node_->get_clock()->get_clock_type());
+    return rclcpp::Time(static_cast<int64_t>(seconds * 1e9));
   }
   return node_->get_clock()->now();
 }

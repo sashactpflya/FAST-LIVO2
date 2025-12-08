@@ -122,8 +122,7 @@ public:
   double gyr_cov = 0, acc_cov = 0, inv_expo_cov = 0;
   double blind_rgb_points = 0.0;
   bool colorize_map_en = true;
-  double last_timestamp_lidar = -1.0, last_timestamp_imu = -1.0,
-         last_timestamp_img = -1.0;
+  double last_timestamp_img = -1.0;
   double filter_size_surf_min = 0;
   double filter_size_pcd = 0;
   double _first_lidar_time = 0.0;
@@ -260,6 +259,9 @@ public:
     std::string vio_frame_id_ = "vio";
     std::string camera_frame_id_ = "camera";
     AppPublishers app_publishers_;
+
+    std::optional<rclcpp::Time> last_timestamp_lidar_;
+    std::optional<rclcpp::Time> last_timestamp_imu_;
 
     bool checkParametersValidity() const;
     void initializeTransforms();
