@@ -51,6 +51,8 @@ fast_livo:
       patch_size: 8
       patch_pyrimid_level: 3
       normal_en: true
+      ncc_en: false
+      ncc_outlier_threshold: 0.8
       raycast_en: false
       inverse_composition_en: false
       exposure_estimate_en: true

@@ -778,7 +778,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
       if (ncc_en)
       {
         double ncc = calculateNCC(patch_wrap.data(), patch_buffer.data(), patch_size_total);
-        if (ncc < ncc_thre)
+        if (ncc < ncc_threshold)
         {
           // grid_num[i] = TYPE_UNKNOWN;
           continue;

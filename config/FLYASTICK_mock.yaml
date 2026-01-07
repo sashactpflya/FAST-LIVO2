@@ -61,19 +61,21 @@ fast_livo:
       point_filter_num: 1
       filter_size_surf: 0.1
       lidar_type: 8
-      scan_line: 32
-      blind: 0.6
-    vio:
-      max_iterations: 5
-      outlier_threshold: 500.0
-      img_point_cov: 1000.0
-      patch_size: 8
-      patch_pyrimid_level: 4
-      normal_en: true
-      raycast_en: false
-      inverse_composition_en: false
-      exposure_estimate_en: true
-      inv_expo_cov: 0.1
+      scan_line: 128
+      blind: 0.3
+      vio:
+        max_iterations: 10
+        outlier_threshold: 500.0
+        img_point_cov: 100.0
+        patch_size: 8
+        patch_pyrimid_level: 4
+        normal_en: true
+        ncc_en: true
+        ncc_outlier_threshold: 0.8
+        raycast_en: false
+        inverse_composition_en: false
+        exposure_estimate_en: true
+        inv_expo_cov: 0.1
     imu:
       imu_en: true
       imu_int_frame: 30

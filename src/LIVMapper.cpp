@@ -90,6 +90,8 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   img_topic = node->declare_parameter<std::string>("common.img_topic", "/left_camera/image");
 
   normal_en = node->declare_parameter<bool>("vio.normal_en", true);
+  ncc_en = node->declare_parameter<bool>("vio.ncc_en", false);
+  ncc_outlier_threshold = node->declare_parameter<double>("vio.ncc_outlier_threshold", 0.8);
   inverse_composition_en = node->declare_parameter<bool>("vio.inverse_composition_en", false);
   max_iterations = node->declare_parameter<int>("vio.max_iterations", 5);
   IMG_POINT_COV = node->declare_parameter<double>("vio.img_point_cov", 100.0);
@@ -318,6 +320,8 @@ void LIVMapper::initializeComponents()
   vio_manager->patch_pyrimid_level = patch_pyrimid_level;
   vio_manager->exposure_estimate_en = exposure_estimate_en;
   vio_manager->colmap_output_en = colmap_output_en;
+  vio_manager->ncc_en = ncc_en;
+  vio_manager->ncc_threshold = ncc_outlier_threshold;
   vio_manager->initializeVIO();
 
   p_imu->set_extrinsic(extT, extR);
