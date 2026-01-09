@@ -171,15 +171,15 @@ bool ncc_en = false;
   deque<cv::Mat> img_buffer;
   deque<double> img_time_buffer;
   vector<pointWithVar> _pv_list;
-  vector<double> extrinT;
-  vector<double> extrinR;
-  vector<double> cameraextrinT;
-  std::vector<double> cameraextrinR;
+  vector<double> extrinT; ///< LiDAR extrinsic translation (T_body_lidar)
+  vector<double> extrinR; ///< LiDAR extrinsic rotation as quaternion (qx, qy, qz, qw) (R_body_lidar)
+  vector<double> T_camera_lidar_raw;
+  std::vector<double> R_camera_lidar_raw;
   bool use_intermediate_extrinsic_ = true; ///< Use body->vio and vio->cam chain to derive lidar->cam
-  std::vector<double> vio_to_camera_T; ///< Translation of camera in VIO frame
-  std::vector<double> vio_to_camera_R; ///< Quaternion (qx, qy, qz, qw) for VIO -> Camera
-  std::vector<double> body_to_vio_T;    ///< Translation of VIO in IMU frame
-  std::vector<double> body_to_vio_R;    ///< Quaternion (qx, qy, qz, qw) for IMU -> VIO
+  std::vector<double> T_vio_camera_raw; ///< Translation of camera in VIO frame
+  std::vector<double> R_vio_camera_raw; ///< Quaternion (qx, qy, qz, qw) for VIO -> Camera
+  std::vector<double> T_body_vio_raw;       ///< Translation of VIO in IMU frame
+  std::vector<double> R_body_vio_raw;       ///< Quaternion (qx, qy, qz, qw) for IMU -> VIO
   double IMG_POINT_COV;
 
   PointCloudXYZI::Ptr visual_sub_map;
@@ -246,10 +246,9 @@ bool ncc_en = false;
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
     rclcpp::TimerBase::SharedPtr static_tf_timer_;
     rclcpp::TimerBase::SharedPtr tf_hold_timer_;
-    tf2::Transform aft_to_lidar_tf_; // DEPRECTATED: use body_to_lidar_tf_ instead
-    tf2::Transform body_to_lidar_tf_;
-    tf2::Transform body_to_vio_tf_;
-    tf2::Transform vio_to_cam_tf_;
+    tf2::Transform TF_lidar_body_; ///< Transform to compute P_lidar = R_lidar_body * P_body + T_lidar_body
+    tf2::Transform TF_vio_body_; ///< Transform to compute P_vio = R_vio_body * P_body + T_vio_body
+    tf2::Transform TF_cam_vio_; ///< Transform to compute P_camera = R_camera_vio * P_vio + T_camera_vio
     tf2::Transform vio_to_cam0_tf_;
     tf2::Transform vio_to_cam1_tf_;
     tf2::Transform vio_to_cam2_tf_;

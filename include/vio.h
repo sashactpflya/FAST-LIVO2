@@ -90,8 +90,8 @@ public:
   vk::PinholeCamera *pinhole_cam;
   StatesGroup *state;
   StatesGroup *state_propagat;
-  M3D Rli, Rci, Rcl, Rcw, Jdphi_dR, Jdp_dt, Jdp_dR;
-  V3D Pli, Pci, Pcl, Pcw;
+  M3D Rli, Rci, R_camera_lidar, Rcw, Jdphi_dR, Jdp_dt, Jdp_dR;
+  V3D Pli, Pci, T_camera_lidar, Pcw;
   vector<int> grid_num;
   vector<int> map_index;
   vector<int> border_flag;

@@ -41,14 +41,14 @@ void VIOManager::setImuToLidarExtrinsic(const V3D &transl, const M3D &rot)
 
 void VIOManager::setLidarToCameraExtrinsic(vector<double> &R, vector<double> &P)
 {
-  Rcl << MAT_FROM_ARRAY(R);
-  Pcl << VEC_FROM_ARRAY(P);
+  R_camera_lidar << MAT_FROM_ARRAY(R);
+  T_camera_lidar << VEC_FROM_ARRAY(P);
 }
 
 void VIOManager::setLidarToCameraExtrinsic(const M3D &R, const V3D &P)
 {
-  Rcl = R;
-  Pcl = P;
+  R_camera_lidar = R;
+  T_camera_lidar = P;
 }
 
 void VIOManager::initializeVIO()
@@ -67,8 +67,8 @@ void VIOManager::initializeVIO()
   height = cam->height();
 
   spdlog::info("[ VIO ] width: {:d}, height: {:d}, scale: {:.3}", width, height, image_resize_factor);
-  Rci = Rcl * Rli;
-  Pci = Rcl * Pli + Pcl;
+  Rci = R_camera_lidar * Rli;
+  Pci = R_camera_lidar * Pli + T_camera_lidar;
 
   V3D Pic;
   M3D tmp;

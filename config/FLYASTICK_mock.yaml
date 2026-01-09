@@ -9,36 +9,59 @@ fast_livo:
       ros_driver_bug_fix: false
       colorize_map_en: false
     extrin_calib: # In the IMU frame
-      extrinsic_T: # IMU to Lidar translation expressed in IMU frame
+      # Convention used:
+      # 
+      # P_imu = R * P_frame + T
+      # With R being the rotation from FRAME to IMU
+      # And T being the position of FRAME origin expressed in IMU frame
+      # 
+      # Except parameters defined initially, new parameters are written as such:
+      #
+      # P_target = R_target_source * P_source + T_target_source
+
+      # P_imu = R_imu_lidar * P_lidar + T_imu_lidar
+      extrinsic_T: # Lidar frame origin in IMU frame
       - -0.0120000
       -  0.0000000
       - -0.0500000
-      extrinsic_R: # IMU to Lidar quaternion (qx, qy, qz, qw)
+      extrinsic_R: # Lidar to IMU rotation as quaternion (qx, qy, qz, qw)
       -  0.0
       -  1.0
       -  0.0
       -  0.0
       use_intermediate_extrinsic: true # Whether to use IMU->VIO and VIO->Camera extrinsics
 
-      body_to_vio_T: # IMU to VIO translation expressed in IMU frame
+      # Intermediate transformation is used to transform a point
+      # in Camera frame into IMU frame passing by VIO frame:
+      # P_vio = R_vio_camera * P_camera + T_vio_camera
+      # P_imu = R_imu_vio * P_vio + T_imu_vio
+      #
+      # By composition:
+      # P_imu = R_imu_vio * (R_vio_camera * P_camera + T_vio_camera) + T_imu_vio
+      # so
+      # R_imu_camera = R_imu_vio * R_vio_camera
+      # T_imu_camera = R_imu_vio * T_vio_camera + T_imu_vio
+      T_body_vio: # VIO frame origin in IMU frame
       - -0.03516
       -  0.01337
       - -0.00412
-      body_to_vio_R: # VIO -> IMU rotation as quaternion (qx, qy, qz, qw)
+      R_body_vio: # VIO to IMU rotation as quaternion (qx, qy, qz, qw)
       - -0.4316055618471249
       -  0.6040941356392046
       -  0.5568315196492184
       - -0.3724588205346895
-      vio_to_camera_T: # VIO IMU to Camera (VIO frame)
+      T_vio_camera: # Camera frame origin in VIO frame
       - 0.0226
       - 0.0048
       - 0.0167
-      vio_to_camera_R: # VIO to Camera quaternion (qx, qy, qz, qw)
+      R_vio_camera: # Camera to VIO rotation as quaternion (qx, qy, qz, qw) # Camera 2
       -  0.12497159
       - -0.11999708
       -  0.7002985
-      - -0.6925062
-      Rcl: # Direct Lidar -> Camera (row major) (in which frame ?)
+      -  0.6925062
+      # Direct Lidar to Camera transformation (row major)
+      # P_camera = R_camera_lidar * P_lidar + T_camera_lidar
+      R_camera_lidar: # Direct Lidar -> Camera (row major) (in which frame ?)
       - 1.0
       - 0.0
       - 0.0
@@ -48,7 +71,7 @@ fast_livo:
       - 0.0
       - 0.0
       - 1.0
-      Pcl:
+      T_camera_lidar: # Lidar position in Camera frame
       - 0.0
       - 0.0
       - 0.0
