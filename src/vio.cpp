@@ -22,6 +22,10 @@ namespace fast_livo
 
 VIOManager::VIOManager() {
   // downSizeFilter.setLeafSize(0.2, 0.2, 0.2);
+  new_feature_min_translation = 0.5;
+  new_feature_min_rotation = 0.3;
+  new_feature_min_pixel_dist = 40.0;
+  depth_discontinuity_threshold = 0.5;
 }
 
 VIOManager::~VIOManager()
@@ -641,7 +645,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
       // cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 3, cv::Scalar(0, 0, 255), -1, 8); // Green Sparse Align tracked
 
       V3D pt_cam(new_frame_->w2f(pt->pos_));
-      bool depth_continous = false;
+      bool depth_discontinous = false;
       for (int u = -patch_size_half; u <= patch_size_half; u++)
       {
         for (int v = -patch_size_half; v <= patch_size_half; v++)
@@ -654,15 +658,15 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
           double delta_dist = abs(pt_cam[2] - depth);
 
-          if (delta_dist > 0.5)
+          if (delta_dist > depth_discontinuity_threshold)
           {
-            depth_continous = true;
+            depth_discontinous = true;
             break;
           }
         }
-        if (depth_continous) break;
+        if (depth_discontinous) break;
       }
-      if (depth_continous) continue;
+      if (depth_discontinous) continue;
 
       // t_2 += fast_livo::utils::getWTime() - t_1;
 
@@ -961,12 +965,12 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
     SE3d delta_pose = pose_ref * pose_cur.inverse();
     double delta_p = delta_pose.translation().norm();
     double delta_theta = (delta_pose.rotationMatrix().trace() > 3.0 - 1e-6) ? 0.0 : std::acos(0.5 * (delta_pose.rotationMatrix().trace() - 1));
-    if (delta_p > 0.5 || delta_theta > 0.3) add_flag = true; // 0.5 || 0.3
+    if (delta_p > new_feature_min_translation || delta_theta > new_feature_min_rotation) add_flag = true;
 
     // Step 3: pixel distance
     Vector2d last_px = last_feature->px_;
     double pixel_dist = (pc - last_px).norm();
-    if (pixel_dist > 40) add_flag = true;
+    if (pixel_dist > new_feature_min_pixel_dist) add_flag = true;
 
     // Maintain the size of 3D point observation features.
     if (pt->obs_.size() >= 30)

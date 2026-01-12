@@ -96,6 +96,7 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   max_iterations = node->declare_parameter<int>("vio.max_iterations", 5);
   IMG_POINT_COV = node->declare_parameter<double>("vio.img_point_cov", 100.0);
   raycast_en = node->declare_parameter<bool>("vio.raycast_en", false);
+depth_discontinuity_threshold = node->declare_parameter<double>("vio.depth_discontinuity_threshold", 0.5);
   exposure_estimate_en = node->declare_parameter<bool>("vio.exposure_estimate_en", true);
   inv_expo_cov = node->declare_parameter<double>("vio.inv_expo_cov", 0.2);
   grid_size = node->declare_parameter<int>("vio.grid_size", 5);
@@ -103,6 +104,9 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   patch_pyrimid_level = node->declare_parameter<int>("vio.patch_pyrimid_level", 3);
   patch_size = node->declare_parameter<int>("vio.patch_size", 8);
   outlier_threshold = node->declare_parameter<double>("vio.outlier_threshold", 1000.0);
+new_feature_min_translation = node->declare_parameter<double>("vio.new_feature_min_translation", 0.5);
+  new_feature_min_rotation = node->declare_parameter<double>("vio.new_feature_min_rotation", 0.3);
+  new_feature_min_pixel_dist = node->declare_parameter<double>("vio.new_feature_min_pixel_dist", 40.0);
 
   exposure_time_init = node->declare_parameter<double>("time_offset.exposure_time_init", 0.0);
   img_time_offset = node->declare_parameter<double>("time_offset.img_time_offset", 0.0);
@@ -333,6 +337,7 @@ void LIVMapper::initializeComponents()
   vio_manager->normal_en = normal_en;
   vio_manager->inverse_composition_en = inverse_composition_en;
   vio_manager->raycast_en = raycast_en;
+vio_manager->depth_discontinuity_threshold = depth_discontinuity_threshold;
   vio_manager->grid_n_width = grid_n_width;
   vio_manager->grid_n_height = grid_n_height;
   vio_manager->patch_pyrimid_level = patch_pyrimid_level;
@@ -340,6 +345,9 @@ void LIVMapper::initializeComponents()
   vio_manager->colmap_output_en = colmap_output_en;
   vio_manager->ncc_en = ncc_en;
   vio_manager->ncc_threshold = ncc_outlier_threshold;
+vio_manager->new_feature_min_translation = new_feature_min_translation;
+  vio_manager->new_feature_min_rotation = new_feature_min_rotation;
+  vio_manager->new_feature_min_pixel_dist = new_feature_min_pixel_dist;
   vio_manager->initializeVIO();
 
   p_imu->set_extrinsic(extT, extR);

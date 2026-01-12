@@ -110,6 +110,10 @@ public:
 
   double img_point_cov, outlier_threshold; 
   double ncc_threshold; ///< Rejection threshold with NCC
+double depth_discontinuity_threshold;
+  double new_feature_min_translation;
+  double new_feature_min_rotation;
+  double new_feature_min_pixel_dist;
   
   SubSparseMap *visual_submap;
   std::vector<std::vector<V3D>> rays_with_sample_points;
