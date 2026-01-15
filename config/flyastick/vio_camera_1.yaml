@@ -1,0 +1,15 @@
+# VIO CAMERA X
+fast_livo:
+  ros__parameters:
+    cam_model: Pinhole
+    cam_width: 640
+    cam_height: 400
+    scale: 1.0
+    cam_fx: 387.34335
+    cam_fy: 387.09073
+    cam_cx: 327.7807
+    cam_cy: 194.46524
+    cam_d0: -0.075204216
+    cam_d1: -0.011968561
+    cam_d2: 0.0012125862
+    cam_d3: 0.00095876533

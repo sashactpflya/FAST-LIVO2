@@ -1693,25 +1693,27 @@ void LIVMapper::publishStaticTf() {
   const auto stamp = *last_timestamp_imu_; // Used as "now"
   std::vector<geometry_msgs::msg::TransformStamped> tfs;
 
-  tfs.push_back(fast_livo::utils::toMsg(TF_lidar_body_, stamp, "body", lidar_frame_id_));
+  // The TFs are publlished as:
+  // - Parent, Child along the the transform that maps Child to Parent
+  tfs.push_back(fast_livo::utils::toMsg(TF_lidar_body_.inverse(), stamp, "body", lidar_frame_id_));
 
   if (has_vio_tf_)
   {
-    tfs.push_back(fast_livo::utils::toMsg(TF_vio_body_, stamp, "body", "vio"));
+    tfs.push_back(fast_livo::utils::toMsg(TF_vio_body_.inverse(), stamp, "body", "vio"));
   }
   if (has_cam_tf_)
   {
-    tfs.push_back(fast_livo::utils::toMsg(TF_cam_vio_, stamp, "vio", "camera"));
+    tfs.push_back(fast_livo::utils::toMsg(TF_cam_vio_.inverse(), stamp, "vio", "camera"));
   }
   
   if ( has_vio_tf_ && has_cam_tf_ )
   {
-      tfs.push_back(fast_livo::utils::toMsg(body_to_cam_tf_, stamp, "body", "camera_from_body"));
+      tfs.push_back(fast_livo::utils::toMsg(TF_cam_body_.inverse(), stamp, "body", "camera_from_body"));
   }
-  tfs.push_back(fast_livo::utils::toMsg(lidar_to_cam_tf_, stamp, "os_sensor", "camera_from_lidar"));
+  tfs.push_back(fast_livo::utils::toMsg(TF_cam_lidar_.inverse(), stamp, lidar_frame_id_, "camera_from_lidar"));
 
 
-app_publishers_.  static_tfs(tfs);
+  app_publishers_.static_tfs(tfs);
 }
 
 void LIVMapper::publish_tf_hold() {

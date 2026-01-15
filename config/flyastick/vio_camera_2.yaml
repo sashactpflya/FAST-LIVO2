@@ -1,0 +1,15 @@
+# VIO CAMERA 2 (CENTER)
+fast_livo:
+  ros__parameters:
+    cam_model: Pinhole
+    cam_width: 640
+    cam_height: 400
+    scale: 1.0
+    cam_fx: 387.07196
+    cam_fy: 386.81454
+    cam_cx: 322.77005
+    cam_cy: 188.36632
+    cam_d0: -0.07490119
+    cam_d1: -0.015997337
+    cam_d2: 0.004611157
+    cam_d3: -0.00027061647
