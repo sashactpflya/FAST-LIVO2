@@ -1744,13 +1744,12 @@ void VIOManager::updateFrameState(StatesGroup state)
   M3D Rwi(state.rot_end);
   V3D Pwi(state.pos_end);
   Rcw = Rci * Rwi.transpose();
+  Pcw = -Rci * Rwi.transpose() * Pwi + Pci;
 
   // ============================== FLYA - PATCH ==============================
   // Due to possible noise/bias, the rotation matrix may not be perfectly orthogonal
-  Rcw = Sophus::SO3d::fitToSO3(Rcw).matrix(); // TODO: Check the exactness of this step
+  Rcw = Sophus::SO3d::fitToSO3(Rcw).matrix();
   // ==========================================================================
-
-//   Pcw = -Rci * Rwi.transpose() * Pwi + Pci;
 
   new_frame_->T_f_w_ = SE3(Rcw, Pcw);
 }
