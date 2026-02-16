@@ -36,6 +36,43 @@ which is included as part of this source code package.
 namespace fast_livo
 {
 
+/**
+  * Additional statistics for Flyability's benchmarks
+  */
+struct AnalysisPublishers
+{
+  struct Vio
+  {
+    std::function<void(const std_msgs::msg::Int32MultiArray &)> esikf_iterations = nullptr;
+  };
+
+  Vio vio;
+
+  std::function<void(const std_msgs::msg::Int32MultiArray &)> vio_esikf_iterations = nullptr;
+  std::function<void(const std_msgs::msg::Int32MultiArray &)> vio_feature_counts = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_inlier_count = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_outlier_count = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_raycast_count = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_added_visual_points = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_common_tracked_points = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_depth_discontinuity_rejects = nullptr;
+  std::function<void(const std_msgs::msg::Float32MultiArray &)> vio_shitomasi_stats = nullptr;
+  std::function<void(int, int, float)> vio_discarded_visual_generation = nullptr;
+  std::function<void(const sensor_msgs::msg::Image &)> vio_sparse_depth_map = nullptr;
+  std::function<void(int, const sensor_msgs::msg::Image &)> vio_reconstructed_view = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> vio_inlier_points = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> vio_outlier_points = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_optimization_point_count = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> vio_optimization_points = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> vio_converged_point_count = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &)> vio_converged_points = nullptr;
+  std::function<void(const sensor_msgs::msg::PointCloud2 &, const sensor_msgs::msg::PointCloud2 &)> vio_point_candidates = nullptr;
+  std::function<void(const sensor_msgs::msg::Image &)> projected_lidar_camera = nullptr;
+  std::function<void(const std_msgs::msg::Int32 &)> lio_esikf_iterations = nullptr;
+  std::function<void(const visualization_msgs::msg::MarkerArray &, const visualization_msgs::msg::MarkerArray &, const visualization_msgs::msg::MarkerArray &)> camera_fov_markers = nullptr;
+  std::function<void(const std_msgs::msg::Float32MultiArray &)> ekf_biases = nullptr;
+};
+
 struct AppPublishers
 {
   std::function<void(const visualization_msgs::msg::Marker &)> plane_marker = nullptr;
