@@ -11,16 +11,10 @@ set(FAST_OPT_DEFAULT ON)
 if(CMAKE_BUILD_TYPE MATCHES "^Debug$")
   set(FAST_OPT_DEFAULT OFF)
 endif()
-option(ENABLE_FAST_OPTIMIZATIONS "Enable arch-specific and loop optimizations (default ON for Release)" ${FAST_OPT_DEFAULT})
+option(ENABLE_FAST_OPTIMIZATIONS "Enable arch-specific and loop optimizations (default ON for Release)" OFF)
 
-set(VIO_OMP_DEFAULT ON)
-if(CMAKE_BUILD_TYPE MATCHES "^Debug$")
-  set(VIO_OMP_DEFAULT OFF)
-endif()
-option(ENABLE_VIO_OPENMP "Enable OpenMP code paths (defines MP_EN/MP_PROC_NUM)" ${VIO_OMP_DEFAULT})
+option(WITH_OPENMP "Build with OpenMP support (enables VIO OpenMP paths)")
 set(VIO_OMP_THREADS "0" CACHE STRING "OpenMP thread count for VIO (0=auto)")
-
-option(WITH_OPENMP "Build with OpenMP support" ON)
 option(WITH_MIMALLOC "Build with mimalloc support" ON)
 # Re-enable detailed timing by default (can still be turned off with -DENABLE_PERFORMANCE_TIMING=OFF)
 option(ENABLE_PERFORMANCE_TIMING "Enable console performance timing output" FALSE)
@@ -31,6 +25,16 @@ if(CMAKE_BUILD_TYPE MATCHES "^Debug$")
   set(ASAN_DEFAULT ON)
 endif()
 option(ENABLE_ASAN "Enable AddressSanitizer for memory debugging (causes 2-5x slowdown)" ${ASAN_DEFAULT})
+
+set(MSAN_DEFAULT OFF)
+option(ENABLE_MSAN "Enable MemorySanitizer for memory debugging (supports clang_ubuntu Conan profile)" ${MSAN_DEFAULT})
+
+set(TSAN_DEFAULT OFF)
+option(ENABLE_TSAN "Enable ThreadSanitizer for data-race debugging" ${TSAN_DEFAULT})
+
+if((ENABLE_ASAN AND ENABLE_MSAN) OR (ENABLE_ASAN AND ENABLE_TSAN) OR (ENABLE_MSAN AND ENABLE_TSAN))
+  message(FATAL_ERROR "AddressSanitizer, MemorySanitizer, and ThreadSanitizer are mutually exclusive.")
+endif()
 
 if(ENABLE_PERFORMANCE_TIMING)
   add_compile_definitions(ENABLE_PERFORMANCE_TIMING)
@@ -43,12 +47,28 @@ endif()
 # sized delete in our binaries triggers "new-delete-type-mismatch". Disable it
 # to match upstream toolchains.
 if(ENABLE_ASAN)
-  add_compile_options(-fsanitize=address -fno-omit-frame-pointer
-                      -fno-sized-deallocation)
-  add_link_options(-fsanitize=address)
+  set(FAST_LIVO_ASAN_COMPILE_OPTIONS -fsanitize=address -fno-omit-frame-pointer -fno-sized-deallocation)
+  set(FAST_LIVO_ASAN_LINK_OPTIONS -fsanitize=address)
   message(STATUS "AddressSanitizer: ENABLED (expect 2-5x slowdown)")
 else()
   message(STATUS "AddressSanitizer: DISABLED (for maximum performance)")
+endif()
+
+if(ENABLE_MSAN)
+  set(FAST_LIVO_MSAN_COMPILE_OPTIONS -fsanitize=memory -fno-omit-frame-pointer)
+  set(FAST_LIVO_MSAN_LINK_OPTIONS -fsanitize=memory)
+  message(STATUS "MemorySanitizer: ENABLED (-fsanitize=memory)")
+else()
+  message(STATUS "MemorySanitizer: DISABLED")
+endif()
+
+if(ENABLE_TSAN)
+  set(FAST_LIVO_TSAN_COMPILE_OPTIONS -fsanitize=thread -fno-omit-frame-pointer)
+  set(FAST_LIVO_TSAN_LINK_OPTIONS -fsanitize=thread)
+  message(STATUS "ThreadSanitizer: ENABLED (-fsanitize=thread)")
+  message(WARNING "ThreadSanitizer: expect 5-15x slowdown and 5-10x memory overhead")
+else()
+  message(STATUS "ThreadSanitizer: DISABLED")
 endif()
 
 if(EXISTS "${CMAKE_BINARY_DIR}/conan_toolchain.cmake")
@@ -75,7 +95,10 @@ if(ENABLE_FAST_OPTIMIZATIONS)
     endif()
     list(APPEND FAST_LIVO_ARCH_DEFINES ARM_ARCH)
   else()
-    set(FAST_LIVO_RELEASE_FLAGS "-march=native -mtune=native -funroll-loops")
+    # /!\ -march=native enables AVX, therefore creating alignment issues between Eigen & PCL /!\
+    # set(FAST_LIVO_RELEASE_FLAGS "-march=native -mtune=native -funroll-loops")
+    # set(FAST_LIVO_RELEASE_FLAGS "-mtune=native -funroll-loops -O3 -ffast-math")
+      set(FAST_LIVO_RELEASE_FLAGS "-mtune=native -funroll-loops -O3")
     list(APPEND FAST_LIVO_ARCH_DEFINES X86_ARCH)
     message(STATUS "Using x86 optimizations: ${FAST_LIVO_RELEASE_FLAGS}")
   endif()
@@ -84,21 +107,39 @@ else()
 endif()
 string(REPLACE " " ";" FAST_LIVO_RELEASE_FLAGS_LIST "${FAST_LIVO_RELEASE_FLAGS}")
 
+# ============================== FLYA - PATCH ==============================
+# ASan builds must avoid enabling AVX flags that prebuilt dependencies (PCL/Eigen)
+# were not compiled with. Strip architecture-specific tuning when sanitizers are on.
+if(ENABLE_ASAN)
+  message(STATUS "ASan build: disabling architecture-specific optimizations to avoid AVX mismatch with dependencies")
+  set(FAST_LIVO_RELEASE_FLAGS "")
+  set(FAST_LIVO_RELEASE_FLAGS_LIST "")
+endif()
+# ========================================================================== 
+
 find_package(Eigen3 CONFIG REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common io filters segmentation) # Local, v1.13.1
-include_directories(${PCL_INCLUDE_DIRS})
-link_directories(${PCL_LIBRARY_DIRS})
-add_definitions(${PCL_DEFINITIONS})
-
-# Log PCL_INCLUDE_DIRS and PCL_LIBRARY_DIRS for debugging
-message(STATUS "PCL_INCLUDE_DIRS: ${PCL_INCLUDE_DIRS}")
-message(STATUS "PCL_LIBRARY_DIRS: ${PCL_LIBRARY_DIRS}")
-
+find_package(PCL REQUIRED COMPONENTS common io filters segmentation)
 find_package(OpenCV CONFIG REQUIRED COMPONENTS core imgproc imgcodecs) # Local
 find_package(Sophus CONFIG REQUIRED)
-find_package(Boost CONFIG REQUIRED COMPONENTS thread system)
-
-add_subdirectory(rpg_vikit/vikit_common)
+find_package(Boost CONFIG REQUIRED COMPONENTS thread system filesystem interprocess)
+find_package(vikit CONFIG REQUIRED)
+set(VIKIT_COMMON_TARGET "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/rpg_vikit/vikit_common/CMakeLists.txt")
+  add_subdirectory(rpg_vikit/vikit_common)
+  set(VIKIT_COMMON_TARGET vikit_common)
+else()
+  if(TARGET vikit::vikit_common)
+    set(VIKIT_COMMON_TARGET vikit::vikit_common)
+  elseif(TARGET vikit::vikit)
+    set(VIKIT_COMMON_TARGET vikit::vikit)
+  elseif(TARGET vikit_common::vikit_common)
+    set(VIKIT_COMMON_TARGET vikit_common::vikit_common)
+  elseif(TARGET vikit_common)
+    set(VIKIT_COMMON_TARGET vikit_common)
+  else()
+    message(FATAL_ERROR "vikit package found but no usable target was created")
+  endif()
+endif()
 
 # ROS 2 dependencies
 find_package(ament_cmake CONFIG REQUIRED)
@@ -113,23 +154,22 @@ find_package(cv_bridge CONFIG REQUIRED)
 find_package(tf2 CONFIG REQUIRED)
 find_package(tf2_ros CONFIG REQUIRED)
 find_package(rclcpp_action CONFIG REQUIRED)
-# find_package(tf2_geometry_msgs CONFIG REQUIRED)
 
 # On systems without Fast-RTPS installed, builtin_interfaces may miss the
 # Fast-RTPS typesupport targets. Create lightweight placeholders so packages
 # exporting them still configure correctly (CycloneDDS runtime remains used).
-if(NOT TARGET builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_c)
-  add_library(builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_c INTERFACE IMPORTED)
-endif()
-if(NOT TARGET builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_cpp)
-  add_library(builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_cpp INTERFACE IMPORTED)
-endif()
-if(NOT TARGET service_msgs::service_msgs__rosidl_typesupport_fastrtps_c)
-  add_library(service_msgs::service_msgs__rosidl_typesupport_fastrtps_c INTERFACE IMPORTED)
-endif()
-if(NOT TARGET service_msgs::service_msgs__rosidl_typesupport_fastrtps_cpp)
-  add_library(service_msgs::service_msgs__rosidl_typesupport_fastrtps_cpp INTERFACE IMPORTED)
-endif()
+# if(NOT TARGET builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_c)
+#   add_library(builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_c INTERFACE IMPORTED)
+# endif()
+# if(NOT TARGET builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_cpp)
+#   add_library(builtin_interfaces::builtin_interfaces__rosidl_typesupport_fastrtps_cpp INTERFACE IMPORTED)
+# endif()
+# if(NOT TARGET service_msgs::service_msgs__rosidl_typesupport_fastrtps_c)
+#   add_library(service_msgs::service_msgs__rosidl_typesupport_fastrtps_c INTERFACE IMPORTED)
+# endif()
+# if(NOT TARGET service_msgs::service_msgs__rosidl_typesupport_fastrtps_cpp)
+#   add_library(service_msgs::service_msgs__rosidl_typesupport_fastrtps_cpp INTERFACE IMPORTED)
+# endif()
 
 
 # Optional mimalloc
@@ -143,36 +183,31 @@ if(WITH_MIMALLOC)
 endif()
 
 # Optional OpenMP
-set(FAST_LIVO_OPENMP_TARGET "")
 if(WITH_OPENMP)
   find_package(OpenMP QUIET)
   if(OpenMP_CXX_FOUND)
     set(FAST_LIVO_OPENMP_TARGET OpenMP::OpenMP_CXX)
-    message(STATUS "OpenMP enabled")
+    message(STATUS "OpenMP enabled (threads option: ${VIO_OMP_THREADS})")
   else()
     message(WARNING "OpenMP requested but not found; continuing without it")
   endif()
 endif()
 
-set(FAST_LIVO_MP_DEFINES "-DMP_PROC_NUM=1")
-if(ENABLE_VIO_OPENMP)
-  if(FAST_LIVO_OPENMP_TARGET STREQUAL "")
-    message(WARNING "ENABLE_VIO_OPENMP=ON but OpenMP is unavailable; falling back to single-thread")
-  else()
-    include(ProcessorCount)
-    ProcessorCount(N)
-    if(VIO_OMP_THREADS STREQUAL "0")
-      set(PROC_NUM ${N})
-    else()
-      set(PROC_NUM ${VIO_OMP_THREADS})
-    endif()
-    if(PROC_NUM LESS 1)
-      set(PROC_NUM 1)
-    endif()
-    set(FAST_LIVO_MP_DEFINES "-DMP_EN" "-DMP_PROC_NUM=${PROC_NUM}")
-    message(STATUS "VIO OpenMP enabled (threads: ${PROC_NUM})")
-  endif()
-endif()
+# set(FAST_LIVO_MP_DEFINES "-DMP_PROC_NUM=1")
+# if(NOT FAST_LIVO_OPENMP_TARGET STREQUAL "")
+#   include(ProcessorCount)
+#   ProcessorCount(N)
+#   if(VIO_OMP_THREADS STREQUAL "0")
+#     set(PROC_NUM ${N})
+#   else()
+#     set(PROC_NUM ${VIO_OMP_THREADS})
+#   endif()
+#   if(PROC_NUM LESS 1)
+#     set(PROC_NUM 1)
+#   endif()
+#   set(FAST_LIVO_MP_DEFINES "-DMP_EN" "-DMP_PROC_NUM=${PROC_NUM}")
+#   message(STATUS "VIO OpenMP enabled (threads: ${PROC_NUM})")
+# endif()
 
 # Interface library for common dependencies
 add_library(fast_livo_interface INTERFACE)
@@ -181,11 +216,12 @@ target_include_directories(fast_livo_interface INTERFACE
 )
 target_link_libraries(fast_livo_interface INTERFACE
     Eigen3::Eigen
-    pcl_common pcl_io pcl_filters
     opencv_core opencv_imgproc opencv_imgcodecs
-    Sophus::Sophus
     Boost::boost
-    vikit_common
+    PCL::common
+    PCL::io
+    PCL::filters
+    ${VIKIT_COMMON_TARGET}
     ${FAST_LIVO_OPENMP_TARGET}
 )
 target_include_directories(fast_livo_interface INTERFACE
@@ -193,9 +229,6 @@ target_include_directories(fast_livo_interface INTERFACE
 )
 
 # Common compiler definitions/options
-add_definitions(-DEIGEN_DONT_ALIGN_STATICALLY=1)
-add_definitions(-DEIGEN_MAX_ALIGN_BYTES=0)
-add_definitions(-DEIGEN_MAX_STATIC_ALIGN_BYTES=0)
 
 target_compile_definitions(fast_livo_interface INTERFACE
     ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/"
@@ -216,38 +249,92 @@ add_library(vio
     src/visual_point.cpp
 )
 target_link_libraries(vio PUBLIC fast_livo_interface)
+if(NOT FAST_LIVO_OPENMP_TARGET STREQUAL "")
+  target_link_libraries(vio PUBLIC ${FAST_LIVO_OPENMP_TARGET})
+endif()
 
 add_library(lio src/voxel_map.cpp)
 target_link_libraries(lio PUBLIC fast_livo_interface)
+if(NOT FAST_LIVO_OPENMP_TARGET STREQUAL "")
+  target_link_libraries(lio PUBLIC ${FAST_LIVO_OPENMP_TARGET})
+endif()
 
 add_library(pre src/preprocess.cpp)
 target_link_libraries(pre PUBLIC fast_livo_interface)
+if(NOT FAST_LIVO_OPENMP_TARGET STREQUAL "")
+  target_link_libraries(pre PUBLIC ${FAST_LIVO_OPENMP_TARGET})
+endif()
 
 add_library(imu_proc src/IMU_Processing.cpp)
 target_link_libraries(imu_proc PUBLIC fast_livo_interface)
+if(NOT FAST_LIVO_OPENMP_TARGET STREQUAL "")
+  target_link_libraries(imu_proc PUBLIC ${FAST_LIVO_OPENMP_TARGET})
+endif()
 
-add_library(laser_mapping src/LIVMapper.cpp)
+add_library(laser_mapping src/LIVMapper.cpp src/analysis_publishers.cpp)
 target_link_libraries(laser_mapping PUBLIC 
     fast_livo_interface
     vio
     lio
     pre
     imu_proc
-    pcl_common
-    pcl_io
-    pcl_filters
-    vikit_common
+    PCL::common PCL::io PCL::filters
+    Boost::boost Boost::filesystem Boost::system
 )
+target_link_libraries(laser_mapping PRIVATE
+    cv_bridge::cv_bridge 
+)
+if(NOT FAST_LIVO_OPENMP_TARGET STREQUAL "")
+  target_link_libraries(laser_mapping PUBLIC ${FAST_LIVO_OPENMP_TARGET})
+endif()
 
 # Main executable
 add_executable(fastlivo_mapping src/main.cpp)
-target_link_libraries(fastlivo_mapping PRIVATE
+target_link_libraries(fastlivo_mapping PUBLIC
     laser_mapping
 )
+if(NOT FAST_LIVO_OPENMP_TARGET STREQUAL "")
+  target_link_libraries(fastlivo_mapping PUBLIC ${FAST_LIVO_OPENMP_TARGET})
+endif()
 
 # Optional mimalloc
 if(WITH_MIMALLOC AND mimalloc_FOUND)
   target_link_libraries(fastlivo_mapping PRIVATE mimalloc-static)
+endif()
+
+set(FAST_LIVO_SANITIZED_TARGETS
+    vio
+    lio
+    pre
+    imu_proc
+    laser_mapping
+    fastlivo_mapping)
+
+if(ENABLE_ASAN)
+  foreach(_t IN LISTS FAST_LIVO_SANITIZED_TARGETS)
+    if(TARGET ${_t})
+      target_compile_options(${_t} PRIVATE ${FAST_LIVO_ASAN_COMPILE_OPTIONS})
+      target_link_options(${_t} PRIVATE ${FAST_LIVO_ASAN_LINK_OPTIONS})
+    endif()
+  endforeach()
+endif()
+
+if(ENABLE_MSAN)
+  foreach(_t IN LISTS FAST_LIVO_SANITIZED_TARGETS)
+    if(TARGET ${_t})
+      target_compile_options(${_t} PRIVATE ${FAST_LIVO_MSAN_COMPILE_OPTIONS})
+      target_link_options(${_t} PRIVATE ${FAST_LIVO_MSAN_LINK_OPTIONS})
+    endif()
+  endforeach()
+endif()
+
+if(ENABLE_TSAN)
+  foreach(_t IN LISTS FAST_LIVO_SANITIZED_TARGETS)
+    if(TARGET ${_t})
+      target_compile_options(${_t} PRIVATE ${FAST_LIVO_TSAN_COMPILE_OPTIONS})
+      target_link_options(${_t} PRIVATE ${FAST_LIVO_TSAN_LINK_OPTIONS})
+    endif()
+  endforeach()
 endif()
 
 # ROS 2 support
@@ -289,9 +376,9 @@ ament_target_dependencies(laser_mapping PUBLIC
     geometry_msgs
     visualization_msgs
     nav_msgs
-    cv_bridge
     tf2
     tf2_ros
+    rmw_cyclonedds_cpp
 )
 
 ament_target_dependencies(fastlivo_mapping PUBLIC
