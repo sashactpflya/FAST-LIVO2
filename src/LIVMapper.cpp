@@ -239,19 +239,19 @@ bool LIVMapper::checkParametersValidity() const
 
 void LIVMapper::initializeTransforms()
 {
-    auto getVector3 = [](const std::vector<double> &vec, const char *name, bool &ok) {
+    auto getVector3 = [](const std::vector<double> &vec, const std::string &name, bool &ok) {
       if (vec.size() == 3) return tf2::Vector3(VEC_FROM_ARRAY(vec));
       spdlog::warn("Parameter {} has {} entries, expected 3. Using zeros.", name, vec.size());
       ok = false;
       return tf2::Vector3(0.0, 0.0, 0.0);
     };
-    auto getQuaternion = [](const std::vector<double> &vec, const char *name, bool &ok) {
+    auto getQuaternion = [](const std::vector<double> &vec, const std::string &name, bool &ok) {
       if (vec.size() == 4) return TF2_QUAT_FROM_ARRAY(vec);
       spdlog::warn("Parameter {} has {} entries, expected 4. Using identity.", name, vec.size());
       ok = false;
       return tf2::Quaternion(0.0, 0.0, 0.0, 1.0);
     };
-    auto getRotationMatrix = [](const std::vector<double> &vec, const char *name, bool &ok) {
+    auto getRotationMatrix = [](const std::vector<double> &vec, const std::string &name, bool &ok) {
       if (vec.size() == 9) {
         tf2::Matrix3x3 R = tf2::Matrix3x3(
             vec[0], vec[1], vec[2],
@@ -264,79 +264,93 @@ void LIVMapper::initializeTransforms()
       return tf2::Matrix3x3::getIdentity();
     };
 
-    // Lidar -> Body
+    auto logCamLidar = [](const tf2::Transform &tf) {
+      const tf2::Vector3 t = tf.getOrigin();
+      tf2::Quaternion q = tf.getRotation();
+      q.normalize();
+      spdlog::info("T_camera_lidar    = [{:.6f}, {:.6f}, {:.6f}], ",t.x(), t.y(), t.z());
+      spdlog::info("R_camera_lidar(q) = [{:.6f}, {:.6f}, {:.6f}, {:.6f}]", q.x(), q.y(), q.z(), q.w());
+    };
 
-    // P_body = R_body_lidar * P_lidar + T_body_lidar
+    // Extrinsics represent the transform from Lidar to Body
     tf2::Vector3 T_body_lidar= tf2::Vector3(VEC_FROM_ARRAY(extrinT));
     tf2::Quaternion R_body_lidar = TF2_QUAT_FROM_ARRAY(extrinR).normalized();
-    
     
     tf2::Transform TF_body_lidar;
     TF_body_lidar.setOrigin(T_body_lidar);
     TF_body_lidar.setRotation(R_body_lidar);
     TF_lidar_body_ = TF_body_lidar.inverse();
 
-    if(use_intermediate_extrinsic_)
+    spdlog::info("Using Camera #{:d}", camera_id_);
+
+    if ( !use_intermediate_extrinsic_ )
     {
-// P_vio = R_body_vio * P_body + T_body_vio
-      // P_body = R_body_vio^-1 * (P_vio - T_body_vio)
-      // <=>
-      // P_body = R_body_vio^-1 * P_vio + (- R_body_vio^-1 * T_body_vio)
-      bool vio_to_body_ok = true;
+      // Otherwise, use direct R_camera_lidar/T_camera_lidar
       
-      tf2::Vector3 T_body_vio = getVector3(T_body_vio_raw, "extrin_calib.T_body_vio", vio_to_body_ok);
-        tf2::Quaternion Q_body_vio = getQuaternion(R_body_vio_raw, "extrin_calib.R_body_vio", vio_to_body_ok);
-
-        tf2::Transform TF_body_vio;
-      if( vio_to_body_ok )
-        {
-            has_vio_tf_ = true;
-TF_body_vio.setOrigin(T_body_vio);
-TF_body_vio.setRotation(Q_body_vio);
-
-        TF_vio_body_ = TF_body_vio.inverse();
-        }
-
-        // Camera to VIO:
-      bool cam_to_vio_ok = true;
-      tf2::Vector3 T_vio_camera = getVector3(T_vio_camera_raw, "extrin_calib.T_vio_camera", cam_to_vio_ok);
-      tf2::Quaternion Q_vio_camera = getQuaternion(R_vio_camera_raw, "extrin_calib.R_vio_camera", cam_to_vio_ok);
-
-      tf2::Transform TF_camera_vio;
-      if( cam_to_vio_ok )
-      {
-        
-        TF_camera_vio.setOrigin(T_vio_camera);
-        TF_camera_vio.setRotation(Q_vio_camera);
-
-        TF_cam_vio_ = TF_camera_vio.inverse();
-                }
-
-        if( cam_to_vio_ok && vio_to_body_ok )
-        {
-            spdlog::info("Using intermediate extrinsic chain for lidar->camera transform.");
-            
-            has_cam_tf_ = true;
-
-            tf2::Transform TF_cam_body;
-        TF_cam_body = TF_camera_vio * TF_body_vio.inverse();
-
-            // Compose Body -> Camera
-body_to_cam_tf_ = TF_cam_body;
-            lidar_to_cam_tf_ = TF_cam_body * TF_body_lidar;
-            return;
-        }
-        else
-        {
-          spdlog::warn("Incomplete intermediate extrinsic parameters; fallback to direct lidar->camera extrinsic.");
-        }
+      TF_cam_lidar_.setOrigin(getVector3(T_camera_lidar_raw, "extrin_calib.T_camera_lidar", has_cam_tf_));
+      tf2::Quaternion Q_camera_lidar;
+      getRotationMatrix(R_camera_lidar_raw, "extrin_calib.R_camera_lidar", has_cam_tf_).getRotation(Q_camera_lidar);
+      TF_cam_lidar_.setRotation(Q_camera_lidar);
+      
+      // Then, if no Camera->Body yet, compute it by using available Lidar->Body 
+      has_cam_tf_ = true;
+      TF_cam_body_ = TF_cam_lidar_ * TF_lidar_body_;
+      logCamLidar(TF_cam_lidar_);
+      return;
     }
 
-    // Otherwise, use direct R_camera_lidar/T_camera_lidar
-    lidar_to_cam_tf_.setOrigin(getVector3(T_camera_lidar_raw, "extrin_calib.T_camera_lidar", has_cam_tf_));
-    tf2::Quaternion q;
-    getRotationMatrix(R_camera_lidar_raw, "extrin_calib.R_camera_lidar", has_cam_tf_).getRotation(q);
-    lidar_to_cam_tf_.setRotation(q);
+    // If using intermediate extrinsics
+
+    // P_body = R_body_vio * P_vio + T_body_vio
+    // P_vio = R_body_vio^-1 * (P_body - T_body_vio)
+    // <=>
+    // P_vio = R_body_vio^-1 * P_body + (- R_body_vio^-1 * T_body_vio)
+    bool vio_to_body_ok = true;
+    
+    tf2::Vector3 T_body_vio =
+        getVector3(T_body_vio_raw, "intermediate_camera_extrinsics.T_body_vio", vio_to_body_ok);
+    tf2::Quaternion Q_body_vio =
+        getQuaternion(R_body_vio_raw, "intermediate_camera_extrinsics.R_body_vio", vio_to_body_ok);
+
+  
+    tf2::Transform TF_body_vio;
+    if( vio_to_body_ok )
+    {
+      has_vio_tf_ = true;
+      TF_body_vio.setOrigin(T_body_vio);
+      TF_body_vio.setRotation(Q_body_vio);
+
+      TF_vio_body_ = TF_body_vio.inverse();
+    }
+
+    // VIO to Camera
+    bool vio_to_cam_ok = true;
+    tf2::Vector3 T_camera_vio = getVector3(T_camera_vio_raw, camera_extrinsics_T_param_, vio_to_cam_ok);
+    tf2::Quaternion Q_camera_vio = getQuaternion(R_camera_vio_raw, camera_extrinsics_R_param_, vio_to_cam_ok);
+
+    if( vio_to_cam_ok )
+    {
+      TF_cam_vio_.setOrigin(T_camera_vio);
+      TF_cam_vio_.setRotation( Q_camera_vio);
+    }
+
+    if( vio_to_cam_ok && vio_to_body_ok )
+    {
+      spdlog::info("Using intermediate extrinsic chain for lidar->camera transform.");
+      
+      has_cam_tf_ = true;
+
+      // Compose Body -> Camera and Lidar -> Camera
+      TF_cam_body_ = TF_cam_vio_ * TF_vio_body_;
+      TF_cam_lidar_ = TF_cam_body_ * TF_body_lidar;
+      logCamLidar(TF_cam_lidar_);
+      return;
+    }
+    else
+    {
+      spdlog::warn("Incomplete intermediate extrinsic parameters; fallback to direct lidar->camera extrinsic.");
+    }
+
 }
 
 void LIVMapper::initializeComponents()
@@ -344,29 +358,30 @@ void LIVMapper::initializeComponents()
   using fast_livo::camera_loader::loadCamera;
 
   downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
-  extT << VEC_FROM_ARRAY(extrinT);
-  extR = EIGEN_QUAT_FROM_ARRAY(extrinR).toRotationMatrix();
+  extT = V3D(VEC_FROM_ARRAY(extrinT)); // Lidar to Body translation
+  extR = M3D(Eigen::Quaterniond(EIGEN_QUAT_FROM_ARRAY(extrinR)).normalized()); // Lidar to Body rotation
+  voxelmap_manager->extT_ = extT;
+  voxelmap_manager->extR_= extR;
 
   initializeTransforms();
 
-  voxelmap_manager->extT_ << VEC_FROM_ARRAY(extrinT);
-  voxelmap_manager->extR_ = extR;
-
   if (!loadCamera(node_, vio_manager->cam)) throw std::runtime_error("Camera model not correctly specified.");
+
+  // Initialize VIO
 
   vio_manager->grid_size = grid_size;
   vio_manager->patch_size = patch_size;
   vio_manager->outlier_threshold = outlier_threshold;
-  vio_manager->setImuToLidarExtrinsic(extT, extR);
+  vio_manager->setLidarToImuExtrinsic(extT, extR);
 
-  Eigen::Quaterniond lidar_to_cam_q(lidar_to_cam_tf_.getRotation().w(),
-                                        lidar_to_cam_tf_.getRotation().x(),
-                                        lidar_to_cam_tf_.getRotation().y(),
-                                        lidar_to_cam_tf_.getRotation().z());
+  Eigen::Quaterniond lidar_to_cam_q(TF_cam_lidar_.getRotation().w(),
+                                        TF_cam_lidar_.getRotation().x(),
+                                        TF_cam_lidar_.getRotation().y(),
+                                        TF_cam_lidar_.getRotation().z());
   Eigen::Matrix3d lidar_to_cam_R = lidar_to_cam_q.normalized().toRotationMatrix();
-  V3D lidar_to_cam_T = V3D(lidar_to_cam_tf_.getOrigin().x(),
-                                    lidar_to_cam_tf_.getOrigin().y(),
-                                    lidar_to_cam_tf_.getOrigin().z());
+  V3D lidar_to_cam_T = V3D(TF_cam_lidar_.getOrigin().x(),
+                                    TF_cam_lidar_.getOrigin().y(),
+                                    TF_cam_lidar_.getOrigin().z());
   vio_manager->setLidarToCameraExtrinsic(lidar_to_cam_R, lidar_to_cam_T);
 
   vio_manager->state = &_state;
@@ -1733,30 +1748,23 @@ void LIVMapper::publishStaticTf() {
   std::vector<geometry_msgs::msg::TransformStamped> tfs;
 
   // The TFs are publlished as:
-  // - Parent, Child along the the transform that maps Child to Parent
+  // Child -> Parent along the the transform that maps Child to Parent
   tfs.push_back(fast_livo::utils::toMsg(TF_lidar_body_.inverse(), stamp, "body", lidar_frame_id_));
 
-  if (has_vio_tf_)
+  if (has_vio_tf_ && has_cam_tf_)
   {
     tfs.push_back(fast_livo::utils::toMsg(TF_vio_body_.inverse(), stamp, "body", "vio"));
-  }
-  if (has_cam_tf_)
-  {
     tfs.push_back(fast_livo::utils::toMsg(TF_cam_vio_.inverse(), stamp, "vio", "camera"));
   }
-  
-  if ( has_vio_tf_ && has_cam_tf_ )
+  else
   {
-      tfs.push_back(fast_livo::utils::toMsg(TF_cam_body_.inverse(), stamp, "body", "camera_from_body"));
+    tfs.push_back(fast_livo::utils::toMsg(TF_cam_lidar_.inverse(), stamp, lidar_frame_id_, "camera"));
   }
-  tfs.push_back(fast_livo::utils::toMsg(TF_cam_lidar_.inverse(), stamp, lidar_frame_id_, "camera_from_lidar"));
-
-
   app_publishers_.static_tfs(tfs);
 }
 
 void LIVMapper::publish_tf_hold() {
-  if (!latest_tf_valid_ || !tf_broadcaster_ || !last_timestamp_imu_)
+  if (!latest_tf_valid_ || !app_publishers_.tf || !last_timestamp_imu_)
     return;
 
   // Use zero-order hold from last odometry stamp, advancing by elapsed wall time
@@ -1770,7 +1778,7 @@ void LIVMapper::publish_tf_hold() {
   transform_cam_to_aft.header.frame_id = "init_pose";
   transform_cam_to_aft.child_frame_id = "body";
   transform_cam_to_aft.transform = latest_tf_transform_;
-  tf_broadcaster_->sendTransform(transform_cam_to_aft);
+  app_publishers_.tf(transform_cam_to_aft);
 }
 
 rclcpp::Time LIVMapper::makeTimeFromSeconds(double seconds) const

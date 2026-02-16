@@ -198,8 +198,8 @@ public:
   PointCloudXYZI::Ptr feats_down_body_;
   PointCloudXYZI::Ptr feats_down_world_;
 
-  M3D extR_;
-  V3D extT_;
+  M3D extR_; ///< Lidar to body rotation
+  V3D extT_; ///< Lidar to body translation
   float build_residual_time, ekf_time;
   float ave_build_residual_time = 0.0;
   float ave_ekf_time = 0.0;

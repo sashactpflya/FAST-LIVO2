@@ -93,6 +93,7 @@ public:
   void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped, const rclcpp::Time &stamp);
   void publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr &mavros_pose_publisher, const rclcpp::Time &stamp);
   void publish_path(const rclcpp::Time &stamp);
+  void publishStaticTf();
   void readParameters(const rclcpp::Node::SharedPtr &node);
   template <typename T> void set_posestamp(T &out);
   template <typename T> void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
@@ -279,11 +280,8 @@ public:
     tf2::Transform TF_lidar_body_; ///< Transform to compute P_lidar = R_lidar_body * P_body + T_lidar_body
     tf2::Transform TF_vio_body_; ///< Transform to compute P_vio = R_vio_body * P_body + T_vio_body
     tf2::Transform TF_cam_vio_; ///< Transform to compute P_camera = R_camera_vio * P_vio + T_camera_vio
-    tf2::Transform vio_to_cam0_tf_;
-    tf2::Transform vio_to_cam1_tf_;
-    tf2::Transform vio_to_cam2_tf_;
-    tf2::Transform body_to_cam_tf_;
-    tf2::Transform lidar_to_cam_tf_;
+    tf2::Transform TF_cam_body_; 
+    tf2::Transform TF_cam_lidar_;
     bool has_vio_tf_ = false;
     bool has_cam_tf_ = false;
     std::string lidar_frame_id_ = "lidar_frame";
@@ -296,8 +294,6 @@ public:
 
     bool checkParametersValidity() const;
     void initializeTransforms();
-    void publishStaticTf();
-    void publish_tf_hold();
     tf2::Transform computeBodyToLidarTf() const;
 };
 

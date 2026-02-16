@@ -37,10 +37,10 @@ VIOManager::~VIOManager()
   feat_map.clear();
 }
 
-void VIOManager::setImuToLidarExtrinsic(const V3D &transl, const M3D &rot)
+void VIOManager::setLidarToImuExtrinsic(const V3D &T_imu_lidar, const M3D &R_imu_lidar)
 {
-  Pli = -rot.transpose() * transl;
-  Rli = rot.transpose();
+  T_lidar_body = -R_imu_lidar.transpose() * T_imu_lidar;
+  R_lidar_body = R_imu_lidar.transpose();
 }
 
 void VIOManager::setLidarToCameraExtrinsic(vector<double> &R, vector<double> &P)
@@ -65,14 +65,12 @@ void VIOManager::initializeVIO()
   cy = cam->cy();
   image_resize_factor = cam->scale();
 
-  spdlog::info("[ VIO ] intrinsic: fx={:.6}, fy={:.6}, cx={:.6}, cy={:.6}", fx, fy, cx, cy);
 
   width = cam->width();
   height = cam->height();
 
-  spdlog::info("[ VIO ] width: {:d}, height: {:d}, scale: {:.3}", width, height, image_resize_factor);
-  Rci = R_camera_lidar * Rli;
-  Pci = R_camera_lidar * Pli + T_camera_lidar;
+  Rci = R_camera_lidar * R_lidar_body;
+  Pci = R_camera_lidar * T_lidar_body + T_camera_lidar;
 
   V3D Pic;
   M3D tmp;
