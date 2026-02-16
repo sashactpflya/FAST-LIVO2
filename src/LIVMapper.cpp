@@ -192,8 +192,7 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   pub_scan_num = node->declare_parameter<int>("publish.pub_scan_num", 1);
   pub_effect_point_en = node->declare_parameter<bool>("publish.pub_effect_point_en", false);
   dense_map_en = node->declare_parameter<bool>("publish.dense_map_en", false);
-
-  use_intermediate_extrinsic_ = node->declare_parameter<bool>("extrin_calib.use_intermediate_extrinsic", true);
+  publish_visible_voxels_en = node->declare_parameter<bool>("publish.publish_visible_voxels", false);
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 }
 
@@ -487,13 +486,12 @@ void LIVMapper::initializeSubscribersAndPublishers()
   pubLaserCloudDynRmed = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/dyn_obj_removed", 100);
   pubLaserCloudDynDbg = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/dyn_obj_dbg_hist", 100);
   mavros_pose_publisher = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/livo2/mavros/vision_pose/pose", 10);
-  pubImage = it.advertise("/livo2/rgb_img", 1);
+  pubVisualPatchesBody = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/vio_patches_body", 10);
   pubImuPropOdom = node_->create_publisher<nav_msgs::msg::Odometry>("/livo2/LIVO2/imu_propagate", 10000);
   imu_prop_timer = node_->create_wall_timer(
       std::chrono::milliseconds(4),
       std::bind(&LIVMapper::imu_prop_callback, this));
   
-  voxelmap_manager->voxel_map_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("/livo2/planes", 10000);
   static_tf_timer_ = node_->create_wall_timer(
       std::chrono::seconds(10),
       std::bind(&LIVMapper::publishStaticTf, this));
@@ -501,6 +499,7 @@ void LIVMapper::initializeSubscribersAndPublishers()
       std::chrono::milliseconds(20),
       std::bind(&LIVMapper::publish_tf_hold, this));
 
+  // Application publishers
   app_publishers_.plane_marker = [pub = plane_pub](const visualization_msgs::msg::Marker &msg) { pub->publish(msg); };
   app_publishers_.voxel_markers = [pub = voxel_pub](const visualization_msgs::msg::MarkerArray &msg) { pub->publish(msg); };
   app_publishers_.laser_cloud_full_res = [pub = pubLaserCloudFullRes](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
@@ -514,10 +513,23 @@ void LIVMapper::initializeSubscribersAndPublishers()
   app_publishers_.laser_cloud_dynamic_removed = [pub = pubLaserCloudDynRmed](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
   app_publishers_.laser_cloud_dynamic_debug = [pub = pubLaserCloudDynDbg](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
   app_publishers_.visual_patches_body = [pub = pubVisualPatchesBody](const sensor_msgs::msg::PointCloud2 &msg) { pub->publish(msg); };
-  app_publishers_.image = [pub = pubImage](const sensor_msgs::msg::Image &msg) { pub->publish(msg); };
+  app_publishers_.image = [pub = pubImage](const sensor_msgs::msg::Image &msg) {
+    if (pub) pub->publish(msg);
+  };
   app_publishers_.mavros_pose = [pub = mavros_pose_publisher](const geometry_msgs::msg::PoseStamped &msg) { pub->publish(msg); };
-  app_publishers_.imu_prop_odom = [pub = pubImuPropOdom](const nav_msgs::msg::Odometry &msg) { pub->publish(msg); };
+  app_publishers_.imu_prop_odom = [pub = pubImuPropOdom](const nav_msgs::msg::Odometry &msg) { pub->publish(msg); };  
+  app_publishers_.tf = [broadcaster = tf_broadcaster_.get()](const geometry_msgs::msg::TransformStamped &msg) {
+    if (broadcaster) broadcaster->sendTransform(msg);
+  };
+  app_publishers_.static_tfs = [broadcaster = static_tf_broadcaster_.get()](const std::vector<geometry_msgs::msg::TransformStamped> &msg) {
+    if (broadcaster) broadcaster->sendTransform(msg);
+  };
+  app_publishers_.voxel_map = [pub = pubVoxelMap](const visualization_msgs::msg::MarkerArray &msg) {
+    if (pub) pub->publish(msg);
+  };
+  voxelmap_manager->setVoxelMapPublisher(&(app_publishers_.voxel_map));
 
+  // Analysis publishers are not wired to ROS
 }
 
 void LIVMapper::handleFirstFrame() 
@@ -1663,6 +1675,91 @@ void LIVMapper::publish_visual_sub_map(const rclcpp::Publisher<sensor_msgs::msg:
   }
 }
 
+void LIVMapper::publish_visual_patches_body(const rclcpp::Time &stamp)
+{
+  if (!pubVisualPatchesBody || !vio_manager || !vio_manager->visual_submap) return;
+  const auto &voxel_points = vio_manager->visual_submap->voxel_points;
+  if (voxel_points.empty()) return;
+
+  const int max_pts = static_cast<int>(voxel_points.size());
+  const int total = std::min(vio_manager->total_points, max_pts);
+  if (total <= 0) return;
+
+  PointCloudXYZI::Ptr patches_body(new PointCloudXYZI());
+  patches_body->reserve(total);
+
+  const M3D Rbw = _state.rot_end.transpose(); // world -> body
+  const V3D &Pwb = _state.pos_end;
+
+  for (int i = 0; i < total; ++i)
+  {
+    VisualPoint *vp = voxel_points[i];
+    if (vp == nullptr) continue;
+    V3D pb = Rbw * (vp->pos_ - Pwb);
+    PointType pt;
+    pt.x = pb(0);
+    pt.y = pb(1);
+    pt.z = pb(2);
+    pt.intensity = static_cast<float>(i);
+    patches_body->push_back(pt);
+  }
+
+  if (patches_body->empty()) return;
+
+  sensor_msgs::msg::PointCloud2 msg;
+  ros_pcl::toROSMsg(*patches_body, msg);
+  msg.header.stamp = stamp;
+  msg.header.frame_id = "body";
+  if (app_publishers_.visual_patches_body) app_publishers_.visual_patches_body(msg);
+}
+
+void LIVMapper::publish_visible_voxels(const rclcpp::Time &stamp)
+{
+  if (!vio_manager || !app_publishers_.voxel_markers) return;
+  const auto &visible_voxels = vio_manager->getVisibleVoxelMap();
+
+  visualization_msgs::msg::MarkerArray markers;
+  visualization_msgs::msg::Marker marker;
+  marker.header.frame_id = "init_pose";
+  marker.header.stamp = stamp;
+  marker.ns = "vio_visible_voxels";
+  marker.id = 0;
+  marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker.pose.orientation.w = 1.0;
+
+  const float voxel_size = static_cast<float>(vio_manager->getVoxelSize());
+  marker.scale.x = voxel_size;
+  marker.scale.y = voxel_size;
+  marker.scale.z = voxel_size;
+  marker.color.a = 0.35f;
+  marker.color.r = 0.2f;
+  marker.color.g = 0.9f;
+  marker.color.b = 0.2f;
+
+  if (visible_voxels.empty())
+  {
+    marker.action = visualization_msgs::msg::Marker::DELETEALL;
+    markers.markers.push_back(marker);
+    app_publishers_.voxel_markers(markers);
+    return;
+  }
+
+  marker.points.reserve(visible_voxels.size());
+  for (const auto &entry : visible_voxels)
+  {
+    const VOXEL_LOCATION &loc = entry.first;
+    geometry_msgs::msg::Point p;
+    p.x = (static_cast<double>(loc.x) + 0.5) * voxel_size;
+    p.y = (static_cast<double>(loc.y) + 0.5) * voxel_size;
+    p.z = (static_cast<double>(loc.z) + 0.5) * voxel_size;
+    marker.points.push_back(p);
+  }
+
+  markers.markers.push_back(marker);
+  app_publishers_.voxel_markers(markers);
+}
+
 void LIVMapper::publish_effect_world(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubLaserCloudEffect,
                                      const std::vector<PointToPlane> &ptpl_list, const rclcpp::Time &stamp)
 {
@@ -1794,6 +1891,9 @@ rclcpp::Time LIVMapper::makeTimeFromSeconds(double seconds) const
 void LIVMapper::setAppPublishers(AppPublishers publishers)
 {
   app_publishers_ = std::move(publishers);
+  if (voxelmap_manager) {
+    voxelmap_manager->setVoxelMapPublisher(&app_publishers_.voxel_map);
+  }
 }
 
 void LIVMapper::resetRosInterfaces()

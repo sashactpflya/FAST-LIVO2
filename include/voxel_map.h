@@ -191,8 +191,8 @@ public:
   VoxelMapManager() = default;
   VoxelMapConfig config_setting_;
   int current_frame_id_ = 0;
-  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr voxel_map_pub_;
-  std::unordered_map<VOXEL_LOCATION, VoxelOctoTree *> voxel_map_;
+  std::function<void(const visualization_msgs::msg::MarkerArray &)> *pubVoxelMapFunc_ = nullptr;
+
 
   PointCloudXYZI::Ptr feats_undistort_;
   PointCloudXYZI::Ptr feats_down_body_;
@@ -245,6 +245,7 @@ public:
 
   void mapSliding();
   void clearMemOutOfMap(const int& x_max,const int& x_min,const int& y_max,const int& y_min,const int& z_max,const int& z_min );
+  void setVoxelMapPublisher(std::function<void(const visualization_msgs::msg::MarkerArray &)> *pubVoxelMapFunc) { pubVoxelMapFunc_ = pubVoxelMapFunc; }
 
 private:
   void GetUpdatePlane(const VoxelOctoTree *current_octo, const int pub_max_voxel_layer, std::vector<VoxelPlane> &plane_list);

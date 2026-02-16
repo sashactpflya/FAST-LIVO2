@@ -91,6 +91,9 @@ struct AppPublishers
   std::function<void(const sensor_msgs::msg::Image &)> image = nullptr;
   std::function<void(const geometry_msgs::msg::PoseStamped &)> mavros_pose = nullptr;
   std::function<void(const nav_msgs::msg::Odometry &)> imu_prop_odom = nullptr;
+  std::function<void(const geometry_msgs::msg::TransformStamped &)> tf = nullptr;
+  std::function<void(const std::vector<geometry_msgs::msg::TransformStamped> &)> static_tfs = nullptr;
+  std::function<void(const visualization_msgs::msg::MarkerArray &)> voxel_map = nullptr;
 };
 
 class LIVMapper
@@ -125,6 +128,8 @@ public:
   void publish_frame_world(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubLaserCloudFullRes, VIOManagerPtr vio_manager,
                            const rclcpp::Time &stamp);
   void publish_visual_sub_map(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubSubVisualMap, const rclcpp::Time &stamp);
+  void publish_visual_patches_body(const rclcpp::Time &stamp);
+  void publish_visible_voxels(const rclcpp::Time &stamp);
   void publish_effect_world(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubLaserCloudEffect, const std::vector<PointToPlane> &ptpl_list,
                             const rclcpp::Time &stamp);
   void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr &pubOdomAftMapped, const rclcpp::Time &stamp);
@@ -298,6 +303,8 @@ public:
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudDyn;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudDynRmed;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudDynDbg;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubVisualPatchesBody;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pubVoxelMap;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pubImage;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr mavros_pose_publisher;
   rclcpp::TimerBase::SharedPtr imu_prop_timer;
