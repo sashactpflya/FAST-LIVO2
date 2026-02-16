@@ -513,7 +513,6 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
     auto rot_add = solution.block<3, 1>(0, 0);
     auto t_add = solution.block<3, 1>(3, 0);
     if ((rot_add.norm() * 57.3 < 0.01) && (t_add.norm() * 100 < 0.015)) { flg_EKF_converged = true; }
-    V3D euler_cur = state_.rot_end.eulerAngles(2, 1, 0);
 
     /*** Rematch Judgement ***/
 
@@ -529,9 +528,8 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
       // total_distance += (_state.pos_end - position_last).norm();
       position_last_ = state_.pos_end;
 
-      tf2::Quaternion q;
-      q.setRPY(euler_cur(0), euler_cur(1), euler_cur(2));
-      geoQuat_ = fast_livo::utils::toMsg(q);
+      const Eigen::Quaterniond q_cur(state_.rot_end);
+      geoQuat_ = fast_livo::utils::toMsg(tf2::Quaternion(q_cur.x(), q_cur.y(), q_cur.z(), q_cur.w()));
 
       // VD(DIM_STATE) K_sum  = K.rowwise().sum();
       // VD(DIM_STATE) P_diag = _state.cov.diagonal();
