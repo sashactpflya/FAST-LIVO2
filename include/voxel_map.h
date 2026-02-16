@@ -19,7 +19,6 @@ which is included as part of this source code package.
 #include <rclcpp/node.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <unistd.h>
-#include <unordered_map>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
@@ -102,14 +101,23 @@ public:
   VOXEL_LOCATION(int64_t vx = 0, int64_t vy = 0, int64_t vz = 0) : x(vx), y(vy), z(vz) {}
 
   bool operator==(const VOXEL_LOCATION &other) const { return (x == other.x && y == other.y && z == other.z); }
+
+  bool operator<(const VOXEL_LOCATION &other) const
+  {
+    if (z != other.z) return z < other.z;
+    if (y != other.y) return y < other.y;
+    return x < other.x;
+  }
 };
+
+}
 
 // Hash value
 namespace std
 {
-template <> struct hash<VOXEL_LOCATION>
+template <> struct hash<fast_livo::VOXEL_LOCATION>
 {
-  int64_t operator()(const VOXEL_LOCATION &s) const
+  int64_t operator()(const fast_livo::VOXEL_LOCATION &s) const
   {
     using std::hash;
     using std::size_t;
@@ -117,6 +125,10 @@ template <> struct hash<VOXEL_LOCATION>
   }
 };
 } // namespace std
+
+
+namespace fast_livo
+{
 
 struct DS_POINT
 {
@@ -193,6 +205,7 @@ public:
   int current_frame_id_ = 0;
   std::function<void(const visualization_msgs::msg::MarkerArray &)> *pubVoxelMapFunc_ = nullptr;
 
+  map_type<VOXEL_LOCATION, VoxelOctoTree *> voxel_map_;
 
   PointCloudXYZI::Ptr feats_undistort_;
   PointCloudXYZI::Ptr feats_down_body_;
@@ -218,7 +231,7 @@ public:
   std::vector<pointWithVar> pv_list_;
   std::vector<PointToPlane> ptpl_list_;
 
-  VoxelMapManager(VoxelMapConfig &config_setting, std::unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &voxel_map)
+  VoxelMapManager(VoxelMapConfig &config_setting, map_type<VOXEL_LOCATION, VoxelOctoTree *> &voxel_map)
       : config_setting_(config_setting), voxel_map_(voxel_map)
   {
     current_frame_id_ = 0;

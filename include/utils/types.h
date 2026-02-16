@@ -4,6 +4,9 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+#include <map>
+#include <unordered_map>
+
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointXYZRGB PointTypeRGB;
 typedef pcl::PointXYZRGBA PointTypeRGBA;
@@ -18,6 +21,9 @@ typedef Eigen::Vector3d V3D;
 typedef Eigen::Matrix3d M3D;
 typedef Eigen::Vector3f V3F;
 typedef Eigen::Matrix3f M3F;
+
+template <typename T1, typename T2>
+using map_type=std::map<T1, T2>; // Use std::map instead of unordered_map to ensure deterministic order for reproducibility
 
 #define MD(a, b) Eigen::Matrix<double, (a), (b)>
 #define VD(a) Eigen::Matrix<double, (a), 1>

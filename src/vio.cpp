@@ -371,7 +371,7 @@ double VIOManager::calculateNCC(float *ref_patch, float *cur_patch, int patch_si
   return numerator / sqrt(demoniator1 * demoniator2 + 1e-10);
 }
 
-void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
+void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const map_type<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   analysis_data_.last_raycast_retrieved_count_ = 0;
   analysis_data_.last_depth_discontinuity_rejects_ = 0;
@@ -1252,7 +1252,7 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
   spdlog::debug("[ VIO ] Update {:d} points in visual submap", update_num);
 }
 
-void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
+void VIOManager::updateReferencePatch(const map_type<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (total_points == 0) return;
 
@@ -1386,7 +1386,7 @@ void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelO
   }
 }
 
-void VIOManager::projectPatchFromRefToCur(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
+void VIOManager::projectPatchFromRefToCur(const map_type<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
   if (total_points == 0) return;
   // if(new_frame_->id_ != 2) return; //124
@@ -2127,7 +2127,7 @@ void VIOManager::dumpDataForColmap()
   cnt++;
 }
 
-void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time)
+void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const map_type<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time)
 {
   if (width != img.cols || height != img.rows)
   {

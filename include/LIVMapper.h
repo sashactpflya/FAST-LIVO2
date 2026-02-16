@@ -159,7 +159,7 @@ public:
   std::thread spin_thread_;
 
   SLAM_MODE slam_mode_;
-  std::unordered_map<VOXEL_LOCATION, VoxelOctoTree *> voxel_map;
+  map_type<VOXEL_LOCATION, VoxelOctoTree *> voxel_map;
   
   string root_dir;
   string lid_topic, imu_topic, seq_name, img_topic;

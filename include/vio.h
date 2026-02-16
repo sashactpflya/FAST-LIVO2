@@ -166,9 +166,12 @@ public:
   MatrixXd K, H_sub_inv;
 
   ofstream fout_camera, fout_colmap;
-  unordered_map<VOXEL_LOCATION, VOXEL_POINTS *> feat_map;
-  unordered_map<VOXEL_LOCATION, int> sub_feat_map; 
-  unordered_map<int, Warp *> warp_map;
+  
+  map_type<VOXEL_LOCATION, VOXEL_POINTS *> feat_map; ///< Visual feature map: Contains voxel that contains visual points
+  map_type<VOXEL_LOCATION, int> sub_feat_map;  ///< Visual feature visibility indicator for voxels
+
+
+  map_type<int, Warp *> warp_map;
   vector<VisualPoint *> retrieve_voxel_points;
   vector<pointWithVar> append_voxel_points;
   FramePtr new_frame_;
@@ -185,8 +188,8 @@ public:
   ~VIOManager();
   int updateStateInverse(cv::Mat img, int level);
   int updateState(cv::Mat img, int level);
-  void processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time);
-  void retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map);
+  void processFrame(cv::Mat &img, vector<pointWithVar> &pg, const map_type<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time);
+  void retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const map_type<VOXEL_LOCATION, VoxelOctoTree *> &plane_map);
   void generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg);
   void setRgbOutputEnabled(bool enabled) { rgb_output_en_ = enabled; }
   void setLidarToImuExtrinsic(const V3D &T_imu_lidar, const M3D &R_imu_lidar);
@@ -208,8 +211,8 @@ public:
   void insertPointIntoVoxelMap(VisualPoint *pt_new);
   void plotTrackedPoints();
   void updateFrameState(StatesGroup state);
-  void projectPatchFromRefToCur(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map);
-  void updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map);
+  void projectPatchFromRefToCur(const map_type<VOXEL_LOCATION, VoxelOctoTree *> &plane_map);
+  void updateReferencePatch(const map_type<VOXEL_LOCATION, VoxelOctoTree *> &plane_map);
   void precomputeReferencePatches(int level);
   void dumpDataForColmap();
   double calculateNCC(float *ref_patch, float *cur_patch, int patch_size);
