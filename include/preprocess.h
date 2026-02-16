@@ -23,6 +23,7 @@ which is included as part of this source code package.
 using namespace std;
 
 #define IS_VALID(a) ((abs(a) > 1e8) ? true : false)
+#define MAX_LINE_NUM 128
 
 enum LiDARFeature
 {
@@ -85,7 +86,7 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(velodyne_ros::Point,
 /*** Ouster ***/
 namespace ouster_ros
 {
-struct EIGEN_ALIGN16 Point
+struct EIGEN_ALIGN16 LegacyPoint
 {
   PCL_ADD_POINT4D;
   float intensity;
@@ -97,7 +98,7 @@ struct EIGEN_ALIGN16 Point
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 } // namespace ouster_ros
-POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::Point, (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)
+POINT_CLOUD_REGISTER_POINT_STRUCT(ouster_ros::LegacyPoint, (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)
                                   (std::uint32_t, t, t)(std::uint16_t, reflectivity,
                                                         reflectivity)(std::uint8_t, ring, ring)(std::uint16_t, ambient, ambient)(std::uint32_t, range, range))
 /****************/
@@ -210,8 +211,9 @@ public:
 
 private:
 //   void avia_handler(const livox_ros_driver::CustomMsg::ConstSharedPtr &msg);
-  void oust64_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
-  void oust32_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+  // Ouster handlers are implemented via a templated helper in preprocess.cpp
+  template <typename OusterPointT>
+  void oust_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void xt32_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
   void Pandar128_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);

@@ -42,12 +42,12 @@ enum LID_TYPE
   UNKNOWN = 0,
   AVIA = 1,
   VELO16 = 2,
-  OUST64 = 3,
+  OUST = 3,
   L515 = 4,
   XT32 = 5,
   PANDAR128 = 6,
   ROBOSENSE = 7,
-  OUST32 = 8,
+  OUST_FLYA = 8,
   NAMUGA_MOCK = 9
 };
 
@@ -59,8 +59,8 @@ inline std::string getLidarFrameName(const LID_TYPE &lidar_type)
     return "livox_frame";
   case VELO16:
     return "velodyne_frame";
-  case OUST64:
-    return "os1_frame";
+  case OUST:
+    return "os_sensor";
   case L515:
     return "l515_frame";
   case XT32:
@@ -69,7 +69,7 @@ inline std::string getLidarFrameName(const LID_TYPE &lidar_type)
     return "pandar128_frame";
   case ROBOSENSE:
     return "rs_frame";
-  case OUST32:
+  case OUST_FLYA:
     return "os_sensor";
   case NAMUGA_MOCK:
     return "namuga_mock_frame";
