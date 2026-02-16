@@ -14,6 +14,8 @@ which is included as part of this source code package.
 #pragma once
 #include "voxel_map.h"
 
+#include <deque>
+
 #include <opencv2/imgproc/imgproc_c.h>
 #include <pcl/filters/voxel_grid.h>
 #include <vikit/math_utils.h>
