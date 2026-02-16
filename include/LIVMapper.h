@@ -108,6 +108,7 @@ public:
   void initializeComponents();
   void initializeFiles();
   void run();
+  void runOfflineStep();
   void gravityAlignment();
   void handleFirstFrame();
   void stateEstimationAndMapping();

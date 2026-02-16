@@ -1104,6 +1104,14 @@ void LIVMapper::run()
   savePCD();
 }
 
+void LIVMapper::runOfflineStep()
+{
+  if(!sync_packages(LidarMeasures)) return;
+  handleFirstFrame();
+  processImu();
+  stateEstimationAndMapping();
+}
+
 void LIVMapper::prop_imu_once(StatesGroup &imu_prop_state, const double dt, V3D acc_avr, V3D angvel_avr)
 {
   double mean_acc_norm = p_imu->IMU_mean_acc_norm;
