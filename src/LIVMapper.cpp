@@ -859,8 +859,17 @@ void LIVMapper::handleLIO()
     }
     Eigen::Quaterniond q(_state.rot_end);
     evoFile << std::fixed;
-    evoFile << LidarMeasures.last_lio_update_time << " " << _state.pos_end[0] << " " << _state.pos_end[1] << " " << _state.pos_end[2] << " "
-            << q.x() << " " << q.y() << " " << q.z() << " " << q.w() << std::endl;
+    const auto log_msg = fmt::format("{:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f} {:.6f}\n", 
+      LidarMeasures.last_lio_update_time,
+      _state.pos_end[0],
+      _state.pos_end[1],
+      _state.pos_end[2],
+      q.x(),
+      q.y(),
+      q.z(),
+      q.w()
+    );
+    evoFile << log_msg;
   }
   
   euler_cur = RotMtoEuler(_state.rot_end);
@@ -956,103 +965,68 @@ void LIVMapper::handleLIO()
 }
 
 void LIVMapper::savePCD() {
+  if (!pcd_save_en || pcd_save_interval >= 0) return;
+
   const bool save_colorized = img_en && colorize_map_en;
   const std::string pcd_suffix = save_colorized ? "_color" : "";
-  const bool has_colorized_points =
-      save_colorized && (pcl_wait_save->points.size() > 0);
-  const bool has_intensity_points =
-      !save_colorized && (pcl_wait_save_intensity->points.size() > 0);
-  if (pcd_save_en && (has_colorized_points || has_intensity_points) &&
-      pcd_save_interval < 0) {
-    
-    spdlog::info("Saving PCD files...");
+  const auto base_dir = std::string(ROOT_DIR) + "Log/PCD/";
 
-    std::string raw_points_dir =
-        std::string(ROOT_DIR) + "Log/PCD/all_raw_points" + pcd_suffix + ".pcd";
-    std::string downsampled_points_dir =
-        std::string(ROOT_DIR) + "Log/PCD/all_downsampled_points" + pcd_suffix +
-        ".pcd";
-    pcl::PCDWriter pcd_writer;
+  pcl::PCDWriter writer;
 
-    if (save_colorized) {
-      pcl::PointCloud<pcl::PointXYZRGB>::Ptr downsampled_cloud(
-          new pcl::PointCloud<pcl::PointXYZRGB>);
-      pcl::VoxelGrid<pcl::PointXYZRGB> voxel_filter;
-      voxel_filter.setInputCloud(pcl_wait_save);
-      voxel_filter.setLeafSize(filter_size_pcd, filter_size_pcd, filter_size_pcd);
-      voxel_filter.filter(*downsampled_cloud);
-  
-      pcd_writer.writeBinary(raw_points_dir, *pcl_wait_save); // Save the raw point cloud data
-      std::cout << GREEN << "Raw point cloud data saved to: " << raw_points_dir 
-                << " with point count: " << pcl_wait_save->points.size() << RESET << std::endl;
-      
-      pcd_writer.writeBinary(downsampled_points_dir, *downsampled_cloud); // Save the downsampled point cloud data
-      std::cout << GREEN << "Downsampled point cloud data saved to: " << downsampled_points_dir 
-                << " with point count after filtering: " << downsampled_cloud->points.size() << RESET << std::endl;
+  if (save_colorized) {
+    if (pcl_wait_save->empty()) return;
 
-      if (save_dense_map_en) {
-        pcd_writer.writeBinary(
-            raw_points_dir,
-            *pcl_wait_save); // Save the raw point cloud data
-        spdlog::info("Raw point cloud data saved to: {} with point count: {}",
-                     raw_points_dir, pcl_wait_save->points.size());
-        spdlog::info(
-            "{}[PCD] Raw colorized map export completed successfully.{}",
-            GREEN, RESET);
-      } else {
-        spdlog::info("Skipping raw colorized map export (pcd_save.save_dense_map=false).");
-      }
+    const std::string raw_path = base_dir + "all_raw_points" + pcd_suffix + ".pcd";
+    const std::string downsampled_path = base_dir + "all_downsampled_points" + pcd_suffix + ".pcd";
 
-      pcd_writer.writeBinary(
-          downsampled_points_dir,
-          *downsampled_cloud); // Save the downsampled point cloud data
-      spdlog::info("Downsampled point cloud data saved to: {} with point count after filtering: {}",
-                   downsampled_points_dir, downsampled_cloud->points.size());
-      spdlog::info(
-          "{}[PCD] Downsampled colorized map export completed successfully.{}",
-          GREEN, RESET);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr downsampled(new pcl::PointCloud<pcl::PointXYZRGB>());
+    pcl::VoxelGrid<pcl::PointXYZRGB> voxel_filter;
+    voxel_filter.setInputCloud(pcl_wait_save);
+    voxel_filter.setLeafSize(filter_size_pcd, filter_size_pcd, filter_size_pcd);
+    voxel_filter.filter(*downsampled);
 
-      if (colmap_output_en) {
-        fout_points << "# 3D point list with one line of data per point\n";
-        fout_points << "#  POINT_ID, X, Y, Z, R, G, B, ERROR\n";
-        for (size_t i = 0; i < downsampled_cloud->size(); ++i) 
-        {
-            const auto& point = downsampled_cloud->points[i];
-            fout_points << i << " "
-                        << std::fixed << std::setprecision(6)
-                        << point.x << " " << point.y << " " << point.z << " "
-                        << static_cast<int>(point.r) << " "
-                        << static_cast<int>(point.g) << " "
-                        << static_cast<int>(point.b) << " "
-                        << 0 << std::endl;
-        }
-      }
-    } else {
-      PointCloudXYZI::Ptr downsampled_cloud(new PointCloudXYZI);
-      pcl::VoxelGrid<PointType> voxel_filter;
-      voxel_filter.setInputCloud(pcl_wait_save_intensity);
-      voxel_filter.setLeafSize(filter_size_pcd, filter_size_pcd,
-                               filter_size_pcd);
-      voxel_filter.filter(*downsampled_cloud);
-
-      if (save_dense_map_en) {
-        pcd_writer.writeBinary(raw_points_dir, *pcl_wait_save_intensity);
-        spdlog::info("Raw point cloud data saved to: {} with point count: {}",
-                     raw_points_dir, pcl_wait_save_intensity->points.size());
-        spdlog::info("{}[PCD] Intensity map export completed successfully.{}",
-                     GREEN, RESET);
-      } else {
-        spdlog::info(
-            "Skipping raw intensity map export (pcd_save.save_dense_map=false).");
-      }
-
-      pcd_writer.writeBinary(downsampled_points_dir, *downsampled_cloud);
-      spdlog::info("Downsampled point cloud data saved to: {} with point count after filtering: {}",
-                   downsampled_points_dir, downsampled_cloud->points.size());
-      spdlog::info(
-          "{}[PCD] Downsampled intensity map export completed successfully.{}",
-          GREEN, RESET);
+    if (save_dense_map_en) {
+      writer.writeBinaryCompressed(raw_path, *pcl_wait_save);
+      spdlog::info("Raw colorized map saved to: {} ({} points)", raw_path, pcl_wait_save->points.size());
     }
+
+    writer.writeBinaryCompressed(downsampled_path, *downsampled);
+    spdlog::info("Downsampled colorized map saved to: {} ({} points)", downsampled_path, downsampled->points.size());
+
+    if (colmap_output_en) {
+      fout_points << "# 3D point list with one line of data per point\n";
+      fout_points << "#  POINT_ID, X, Y, Z, R, G, B, ERROR\n";
+      for (size_t i = 0; i < downsampled->size(); ++i) {
+        const auto &point = downsampled->points[i];
+        fout_points << i << " " << std::fixed << std::setprecision(6)
+                    << point.x << " " << point.y << " " << point.z << " "
+                    << static_cast<int>(point.r) << " " << static_cast<int>(point.g) << " "
+                    << static_cast<int>(point.b) << " " << 0 << std::endl;
+      }
+    }
+
+    PointCloudXYZRGB().swap(*pcl_wait_save);
+  } else {
+    if (pcl_wait_save_intensity->empty()) return;
+
+    const std::string raw_path = base_dir + "all_raw_points" + pcd_suffix + ".pcd";
+    const std::string downsampled_path = base_dir + "all_downsampled_points" + pcd_suffix + ".pcd";
+
+    PointCloudXYZI::Ptr downsampled(new PointCloudXYZI());
+    pcl::VoxelGrid<PointType> voxel_filter;
+    voxel_filter.setInputCloud(pcl_wait_save_intensity);
+    voxel_filter.setLeafSize(filter_size_pcd, filter_size_pcd, filter_size_pcd);
+    voxel_filter.filter(*downsampled);
+
+    if (save_dense_map_en) {
+      writer.writeBinaryCompressed(raw_path, *pcl_wait_save_intensity);
+      spdlog::info("Raw intensity map saved to: {} ({} points)", raw_path, pcl_wait_save_intensity->points.size());
+    }
+
+    writer.writeBinaryCompressed(downsampled_path, *downsampled);
+    spdlog::info("Downsampled intensity map saved to: {} ({} points)", downsampled_path, downsampled->points.size());
+
+    PointCloudXYZI().swap(*pcl_wait_save_intensity);
   }
 }
 
