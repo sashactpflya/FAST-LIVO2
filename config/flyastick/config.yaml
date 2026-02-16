@@ -1,5 +1,26 @@
 fast_livo:
   ros__parameters:
+    analysis:
+      plot_time: -10.0
+      frame_cnt: 6
+      publish_sparse_depth_map: false
+      # Generate the images showing the patches projected in the image frame
+      generate_projection_images: true
+      reconstructed_view_levels: 
+      - 0
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      lidar_projection_en: false
+      depth_discontinuity_overlay_on_depth_map: false
+      publish_vio_optimization_points: false
+      publish_vio_point_candidates: true
+      publish_camera_intrinsics: false
+      draw_camera_axes_on_rgb: true
+      camera_intrinsics_every_n_vio_iters: 30
+      publish_converged_points: false
     common:
       img_topic: "/flyastick/camera/raw"
       lid_topic: "/flyastick/lidar/mock"
@@ -21,31 +42,35 @@ fast_livo:
 
       # P_imu = R_imu_lidar * P_lidar + T_imu_lidar
 
-      # # Real lidar
-      # This is T_body_lidar
-      # and R_body_lidar
-      # extrinsic_T: # Translation of the real LiDAR w.r.t. the body frame
-      #   - -0.01235
-      #   -  0.00000
-      #   - -0.05631
-      # extrinsic_R: # Rotation of the real LiDAR w.r.t. the body frame (IMU frame)
-      #   - -0.3436366430992583
-      #   -  0.9324413862988172
-      #   -  0.04397600618325498
-      #   - -0.10263054865284184
-
-      # Virtual lidar
+      # Real LiDAR
       extrinsic_T: # Lidar frame origin in IMU frame
-      - -0.0120000
-      -  0.0000000
-      - -0.0500000
+      - -0.01235
+      -  0.0
+      - -0.05631
       extrinsic_R: # Lidar to IMU rotation as quaternion (qx, qy, qz, qw)
-      -  0.0
-      -  1.0
-      -  0.0
-      -  0.0
-      use_intermediate_extrinsic: true # Whether to use IMU->VIO and VIO->Camera extrinsics
+      - -0.3381834231763436
+      -  0.9341699178174587
+      -  0.04376523445587171
+      - -0.10508635109601709
 
+      # Direct Lidar to Camera transformation (row major)
+      # P_camera = R_camera_lidar * P_lidar + T_camera_lidar
+      R_camera_lidar: # Direct Lidar -> Camera (row major) (in which frame ?)
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      T_camera_lidar: # Lidar position in Camera frame
+      - 0.0
+      - 0.0
+      - 0.0
+    intermediate_camera_extrinsics:
+      use_intermediate_extrinsic: true
       # Intermediate transformation is used to transform a point
       # in Camera frame into IMU frame passing by VIO frame:
       # P_vio = R_vio_camera * P_camera + T_vio_camera
@@ -65,38 +90,44 @@ fast_livo:
       -  0.6040941356392046
       -  0.5568315196492184
       - -0.3724588205346895
-      T_vio_camera: # Camera frame origin in VIO frame
-      - 0.0226
-      - 0.0048
-      - 0.0167
-      R_vio_camera: # Camera to VIO rotation as quaternion (qx, qy, qz, qw) # Camera 2
-      # /!\ The quaternion must be the conjugate of the imu_cam_extrinsics.yaml calibration file
-      -  0.12497159
-      - -0.11999708
-      -  0.7002985
-      - -0.6925062
-      # Direct Lidar to Camera transformation (row major)
-      # P_camera = R_camera_lidar * P_lidar + T_camera_lidar
-      R_camera_lidar: # Direct Lidar -> Camera (row major) (in which frame ?)
-      - 1.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 1.0
-      - 0.0
-      - 0.0
-      - 0.0
-      - 1.0
-      T_camera_lidar: # Lidar position in Camera frame
-      - 0.0
-      - 0.0
-      - 0.0
+      cameras:
+        camera_0:
+          T_camera_vio: # Camera frame origin in VIO frame
+          - 0.0319
+          - 0.0055
+          - 0.0017
+          R_camera_vio: # Camera to VIO rotation as quaternion (qx, qy, qz, qw) # Camera 0
+          -  0.45661277
+          - -0.45814237
+          -  0.5435289
+          -  0.5349642
+        camera_1:
+          T_camera_vio: # Camera frame origin in VIO frame
+          - 0.0048
+          - 0.0065
+          - 0.0144
+          R_camera_vio:
+          - -0.23763095
+          -  0.24196379
+          -  0.6681836
+          -  0.66220516
+        camera_2:
+          T_camera_vio: # Camera frame origin in VIO frame
+          - 0.0226
+          - 0.0048
+          - 0.0167
+          R_camera_vio: # Camera to VIO rotation as quaternion (qx, qy, qz, qw) # Camera 2
+          -  0.12497159
+          - -0.11999708
+          -  0.7002985
+          -  0.6925062
+
     time_offset:
       imu_time_offset: 0.0
       img_time_offset: 0.0
       exposure_time_init: 0.0
     preprocess:
-      hilti_en: false
+      video_downsampler: 3 # Downsampling from 30Hz to 10Hz for images
       point_filter_num: 1
       filter_size_surf: 0.1
       lidar_type: 8
@@ -105,21 +136,28 @@ fast_livo:
       feature_extract_enabled: false
     vio:
       max_iterations:  5
-      outlier_threshold: 100.0
-      new_feature_min_translation: 0.25 # Min camera translation (m) before adding a new observation to an existing visual point
+      outlier_threshold: 500.0
+      new_feature_min_translation: 0.5 # Min camera translation (m) before adding a new observation to an existing visual point
       new_feature_min_rotation: 0.3 # Min camera rotation (rad) before adding a new observation to an existing visual point
-      new_feature_min_pixel_dist: 20.0 # Min pixel displacement before adding a new observation to an existing visual point
-      img_point_cov: 500.0
+      new_feature_min_pixel_dist: 40.0 # Min pixel displacement before adding a new observation to an existing visual point
+      img_point_cov: 1500.0
       patch_size: 8
-      patch_pyrimid_level: 3 # /!\ Misleading name, it is not the patch that is downsampled, but the whole image
+      patch_pyrimid_level: 4
       normal_en: true
+      orientation_check_en: false
+      max_view_angle: 80.0 # Max view angle in degrees for the orientation check
       ncc_en: false
-      ncc_outlier_threshold: 0.95
+      ncc_outlier_threshold: 0.6
       raycast_en: true
+      raycast_d_min: 0.1
+      raycast_d_max: 20.0
+      raycast_step: 0.2
+      depth_discontinuity_threshold: 0.
       inverse_composition_en: false
       exposure_estimate_en: true
       inv_expo_cov: 0.1
-      grid_size: 11
+      grid_size: 17
+      min_shitomasi_score: 0.0
     imu:
       imu_en: true
       imu_int_frame: 200 # 200 <=> 1s | 1000 <=> 5s | 2000 <=> 10s
@@ -140,7 +178,7 @@ fast_livo:
       b_acc_cov: 0.0001
       b_gyr_cov: 0.0001
     lio:
-      max_iterations: 8
+      max_iterations: 10
 
       # According to Ouster REV7
       # 0.3–1 m: σᵣ = 0.02 m
@@ -158,7 +196,7 @@ fast_livo:
       min_eigen_value: 0.0001
       voxel_size: 0.2
       max_layer: 2
-      max_points_num: 100
+      max_points_num: 50
       layer_init_num:
       - 5
       - 5
@@ -176,14 +214,16 @@ fast_livo:
       dense_map_en: false
       pub_effect_point_en: false
       pub_plane_en: false
+      pub_rgb_img: true
+      publish_visible_voxels: false
       pub_scan_num: 1
       blind_rgb_points: 0.00
     evo:
       seq_name: "exp11_lower_gallery"
       pose_output_en: true
     pcd_save:
-      pcd_save_en: false
+      pcd_save_en: true
       colmap_output_en: false
       save_dense_map: false
-      filter_size_pcd: 0.2  
+      filter_size_pcd: 0.2
       interval: 100

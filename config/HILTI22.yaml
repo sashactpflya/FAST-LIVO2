@@ -1,5 +1,7 @@
 fast_livo:
   ros__parameters:
+    analysis:
+      publish_camera_fov_markers: false
     common:
       img_topic: "/alphasense/cam0/image_raw"
       lid_topic: "/hesai/pandar"
@@ -32,13 +34,14 @@ fast_livo:
       - -0.0549762
       - 0.0675401
       - -0.0520599
+    intermediate_camera_extrinsics:
       use_intermediate_extrinsic: false
     time_offset:
       imu_time_offset: 0.0
       img_time_offset: 0.0
       exposure_time_init: 0.0
     preprocess:
-      hilti_en: true
+      video_downsampler: 4
       point_filter_num: 1
       filter_size_surf: 0.1
       lidar_type: 5

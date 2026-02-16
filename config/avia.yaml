@@ -32,6 +32,7 @@ fast_livo:
       - 0.0194384
       - 0.104689
       - -0.0251952
+    intermediate_camera_extrinsics:
       use_intermediate_extrinsic: false
     time_offset:
       imu_time_offset: 0.0

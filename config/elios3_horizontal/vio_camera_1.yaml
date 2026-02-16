@@ -1,0 +1,15 @@
+# VIO CAMERA X
+fast_livo:
+  ros__parameters:
+    cam_model: EquidistantCamera
+    cam_width: 640
+    cam_height: 400
+    scale: 1.0
+    cam_fx: 382.62375
+    cam_fy: 382.25247
+    cam_cx: 319.64938
+    cam_cy: 204.74959
+    k1: -0.074402004
+    k2: -0.012353345
+    k3:  0.0026349165
+    k4: -0.00036774893

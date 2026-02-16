@@ -1,58 +1,73 @@
 fast_livo:
   ros__parameters:
     analysis:
+      plot_time: -10.0
+      frame_cnt: 6
+      lidar_projection_en: false
+      generate_projection_images: true
+      reconstructed_view_levels: [0,1,2,3]
+      publish_sparse_depth_map: false
+      draw_camera_axes_on_rgb: false
+      publish_converged_points: false
       publish_camera_fov_markers: false
+      depth_discontinuity_overlay_on_depth_map: false
+      publish_vio_inliers_outliers_clouds: false
+      publish_vio_optimization_points: true
+      publish_vio_point_candidates: false
     common:
-      img_topic: "/left_camera/image"
-      lid_topic: "/livox/lidar"
-      imu_topic: "/livox/imu"
+      img_topic: "/left/image_raw"
+      lid_topic: "/os1_cloud_node1/points"
+      imu_topic: "/imu/imu"
       img_en: 1
       lidar_en: 1
       ros_driver_bug_fix: false
       colorize_map_en: false
     extrin_calib:
       extrinsic_T:
-      - 0.04165
-      - 0.02326
-      - -0.0284
+      - -0.050
+      -  0.000
+      -  0.055
       extrinsic_R: # Lidar to IMU quaternion (qx, qy, qz, qw)
       - 0.0
       - 0.0
       - 0.0
       - 1.0
       R_camera_lidar:
-      - 0.00438814
-      - -0.999807
-      - -0.0191582
-      - -0.00978695
-      - 0.0191145
-      - -0.999769
-      - 0.999942
-      - 0.00457463
-      - -0.00970118
+      - 0.0218308
+      - 0.99976
+      - -0.00201407
+      - -0.0131205
+      - 0.00230088
+      - 0.999911
+      - 0.999676
+      - -0.0218025
+      - 0.0131676
       T_camera_lidar:
-      - 0.016069
-      - 0.0871753
-      - -0.0718021
+      -  0.122993
+      -  0.0398643
+      - -0.0577101
     intermediate_camera_extrinsics:
       use_intermediate_extrinsic: false
     time_offset:
+      lidar_time_offset: -0.1
       imu_time_offset: 0.0
-      img_time_offset: -0.1
+      img_time_offset: 0.0
       exposure_time_init: 0.0
     preprocess:
       video_downsampler: 1
-      point_filter_num: 1
+      point_filter_num: 3
       filter_size_surf: 0.1
-      lidar_type: 1
-      scan_line: 6
-      blind: 0.8
+      lidar_type: 3
+      scan_line: 16
+      blind: 1.0
+      feature_extract_enabled: false
     vio:
+      voxel_size: 0.5
       max_iterations: 5
       outlier_threshold: 1000.0
-      img_point_cov: 1000.0
+      img_point_cov: 100.0
       patch_size: 8
-      patch_pyrimid_level: 4
+      patch_pyrimid_level: 3
       normal_en: true
       ncc_en: false
       ncc_outlier_threshold: 0.8
@@ -63,16 +78,16 @@ fast_livo:
     imu:
       imu_en: true
       imu_int_frame: 30
-      acc_cov: 2.0
-      gyr_cov: 0.1
+      acc_cov: 0.5
+      gyr_cov: 0.3
       b_acc_cov: 0.0001
       b_gyr_cov: 0.0001
     lio:
       max_iterations: 5
       dept_err: 0.02
-      beam_err: 0.05
-      min_eigen_value: 0.005
-      voxel_size: 2.0
+      beam_err: 0.01
+      min_eigen_value: 0.0025
+      voxel_size: 0.5
       max_layer: 2
       max_points_num: 50
       layer_init_num:
@@ -95,8 +110,8 @@ fast_livo:
       pub_scan_num: 1
       blind_rgb_points: 0.0
     evo:
-      seq_name: HKisland03
-      pose_output_en: false
+      seq_name: eee_01
+      pose_output_en: true
     pcd_save:
       pcd_save_en: false
       colmap_output_en: false

@@ -32,6 +32,7 @@ fast_livo:
       - 0.122993
       - 0.0398643
       - -0.0577101
+    intermediate_camera_extrinsics:
       use_intermediate_extrinsic: false
     time_offset:
       lidar_time_offset: -0.1
@@ -39,6 +40,7 @@ fast_livo:
       img_time_offset: 0.0
       exposure_time_init: 0.0
     preprocess:
+      video_downsampler: 1
       point_filter_num: 3
       filter_size_surf: 0.1
       lidar_type: 3
