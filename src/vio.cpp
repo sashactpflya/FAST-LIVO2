@@ -228,23 +228,13 @@ void VIOManager::getImagePatch(cv::Mat img, V2D pc, float *patch_tmp, int level)
   const float w_ref_tr = subpix_u_ref * (1.0 - subpix_v_ref);
   const float w_ref_bl = (1.0 - subpix_u_ref) * subpix_v_ref;
   const float w_ref_br = subpix_u_ref * subpix_v_ref;
-
-  // ============================== FLYA - PATCH ==============================
-  // Avoid reading outside the image when the patch is near image borders.
-  const int img_height = img.rows;
-  const int img_width = img.cols;
-  const int patch_offset = patch_size_half * scale;
-  if (u_ref_i - patch_offset < 0 || u_ref_i + patch_offset + scale >= img_width ||
-      v_ref_i - patch_offset < 0 || v_ref_i + patch_offset + scale >= img_height) {
-    return;
-  }
-  // ==========================================================================
-
-  for (int x = 0; x < patch_size; x++) {
+  for (int x = 0; x < patch_size; x++)
+  {
     uint8_t *img_ptr = (uint8_t *)img.data +
                        (v_ref_i - patch_size_half * scale + x * scale) * width +
                        (u_ref_i - patch_size_half * scale);
-    for (int y = 0; y < patch_size; y++, img_ptr += scale) {
+    for (int y = 0; y < patch_size; y++, img_ptr += scale)
+    {
       patch_tmp[patch_size_total * level + x * patch_size + y] =
           w_ref_tl * img_ptr[0] + w_ref_tr * img_ptr[scale] + w_ref_bl * img_ptr[scale * width] + w_ref_br * img_ptr[scale * width + scale];
     }
@@ -408,12 +398,20 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
   // printf("pg size: %zu \n", pg.size());
 
+  // ===
+  // Cf. VII.A.1 : Visual Map Point Selection - Visible Voxel Query
+  //
+  // Iterate through all points in the current scan to generate the list of 
+  // visible voxels and depth map
+  // ===
   for (int i = 0; i < pg.size(); i++)
   {
     // double t0 = fast_livo::utils::getWTime();
 
+    // ===
+    // Retrieve voxel location of each LiDAR point in VIO's voxel grid
+    // ===
     V3D pt_w = pg[i].point_w;
-
     for (int j = 0; j < 3; j++)
     {
       // This double floor is there in the original code, and it may induce bugs in voxel indexing.
@@ -426,6 +424,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
     // t_position += fast_livo::utils::getWTime()-t0;
     // double t1 = fast_livo::utils::getWTime();
 
+    // ===
+    // If not in the submap yet, add the voxel (initialized its value to 0)
+    // ===
     auto iter = sub_feat_map.find(position);
     if (iter == sub_feat_map.end()) { sub_feat_map[position] = 0; }
     else { iter->second = 0; }
@@ -464,6 +465,18 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   // double t1 = fast_livo::utils::getWTime();
   vector<VOXEL_LOCATION> DeleteKeyList;
 
+  // ===
+  // Cf. VII.A.2 & 3 : Visual Map Point Selection
+  //
+  // Define if a cell contains a Visual map point, Lidar point, or none.
+  // And select the closest map point, to avoid selecting occluded map point. (Outlier rejection)
+  //
+  // grid_state contains FLAGS wether a 30x30 cell has a Map point, raw Lidar point or no point
+  // map_dist contains for each cell the current best distance from the camera to 
+  //          whichever map point claimed that cell. This is to keep the point with the lowest depth in the end
+  // retrieve_voxel_points stores the best candidate for each cell
+  //
+  // ===
   for (auto &iter : sub_feat_map)
   {
     VOXEL_LOCATION position = iter.first;
@@ -511,6 +524,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   }
 
   // RayCasting Module
+  // ===
+  // Cf. VII.A.2 : Visual Map Point Selection - Raycasting on Demand
+  // ===
   if (raycast_en)
   {
     for (int i = 0; i < length; i++)
@@ -596,6 +612,11 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
         }
         else
         {
+          // ===
+          // If no voxel is found in the visual map, fetch point in the plane map,
+          // i.e. lidar points/plane that have no visual point attached.
+          // If a plane is found, add it to the visual submap.
+          // ===
           VOXEL_LOCATION sample_pos(loc_xyz[0], loc_xyz[1], loc_xyz[2]);
           auto iter = plane_map.find(sample_pos);
           if (iter != plane_map.end())
@@ -618,6 +639,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
     }
   }
 
+  // ===
+  // Update the visual submap by removing voxel that are not anymore in FoV
+  // ===
   for (auto &key : DeleteKeyList)
   {
     sub_feat_map.erase(key);
@@ -630,6 +654,12 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   // double t_2, t_3, t_4, t_5;
   // t_2=t_3=t_4=t_5=0;
 
+  // ===
+  // Cf. VII.A.3 : Visual Map Point Selection - Outlier rejection
+  // 
+  // Reject points that:
+  // - Have not a continuous depth
+  // ===
   for (int i = 0; i < length; i++)
   {
     if (grid_num[i] == TYPE_MAP)
@@ -643,6 +673,11 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
       // cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 3, cv::Scalar(0, 0, 255), -1, 8); // Green Sparse Align tracked
 
+      // ===
+      // By comparing the depth of visual map points with their 9 × 9
+      // neighbor in the depth map, we determine  their occlusion and 
+      // depth variation
+      // ===
       V3D pt_cam(new_frame_->w2f(pt->pos_));
       bool depth_discontinuous = false;
       for (int u = -patch_size_half; u <= patch_size_half; u++)
@@ -678,10 +713,20 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
       if (!pt->is_normal_initialized_) continue;
 
+      // ===
+      // Select the reference patch
+      // - Normal enabled : Compute the optimal
+      // - Disabled : get the patch that is best aligned with current PoV
+      // ===
       if (normal_en)
       {
         float phtometric_errors_min = std::numeric_limits<float>::max();
 
+        // ===
+        // Retrieve the feature
+        // - If only one is available, take it
+        // - If several available but not a reference yet, determine the optimal
+        // ===
         if (pt->obs_.size() == 1)
         {
           ref_ftr = *pt->obs_.begin();
@@ -690,6 +735,11 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
         }
         else if (!pt->has_ref_patch_)
         {
+          // ===
+          // The selected reference patch is the one that minimize the photometric error
+          // between all other patches.
+          // TODO: Is there an optimization possible here ?
+          // ===
           for (auto it = pt->obs_.begin(), ite = pt->obs_.end(); it != ite; ++it)
           {
             Feature *ref_patch_temp = *it;
@@ -724,6 +774,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
         if (!pt->getCloseViewObs(new_frame_->pos(), ref_ftr, pc)) continue;
       }
 
+      // ===
+      // Compute the warp matrix to apply to the patch to align with point of view
+      // ===
       if (normal_en)
       {
         V3D norm_vec = (ref_ftr->T_f_w_.rotationMatrix() * pt->normal_).normalized();
@@ -771,7 +824,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
       getImagePatch(img, pc, patch_buffer.data(), 0);
 
-      float error = 0.0;
+      float error = 0.0; ///< Exposure-scaled SSD to compute photometric difference with different lightning/exposure conditions
       for (int ind = 0; ind < patch_size_total; ind++)
       {
         error += (ref_ftr->inv_expo_time_ * patch_wrap[ind] - state->inv_expo_time * patch_buffer[ind]) *
@@ -884,6 +937,9 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
   // double t_b1 = fast_livo::utils::getWTime() - t0;
   // t0 = fast_livo::utils::getWTime();
 
+  // ===
+  // Append VisualPoint
+  // ===
   int add = 0;
   for (int i = 0; i < length; i++)
   {
@@ -943,6 +999,9 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
   {
     VisualPoint *pt = visual_submap->voxel_points[i];
     if (pt == nullptr) continue;
+
+    // If the point has converged, skip updating and clean up non-reference features
+    // as they are no longer needed.
     if (pt->is_converged_)
     { 
       pt->deleteNonRefPatchFeatures();
@@ -1617,30 +1676,7 @@ void VIOManager::updateState(cv::Mat img, int level)
       float w_ref_bl = (1.0 - subpix_u_ref) * subpix_v_ref;
       float w_ref_br = subpix_u_ref * subpix_v_ref;
 
-  // ============================== FLYA - PATCH ==============================
-      // Guard index accesses into the image and stored patch to avoid
-      // overreads when a feature lies near the boundary or the pyramid level
-      // does not match the cached patch.
-      const int img_height = img.rows;
-      const int img_width = img.cols;
-      const int patch_offset = patch_size_half * scale;
-
-      // Ensure the full patch (and +/- scale offsets used below) stay inside the
-      // image; otherwise skip this point.
-      if (u_ref_i - patch_offset - scale < 0 ||
-          u_ref_i + patch_offset + scale >= img_width ||
-          v_ref_i - patch_offset - scale < 0 ||
-          v_ref_i + patch_offset + scale >= img_height) {
-        continue;
-      }
-
       vector<float> P = visual_submap->warp_patch[i];
-      const int patch_idx_base = patch_size_total * level;
-      if (patch_idx_base + patch_size_total > static_cast<int>(P.size())) {
-        continue;
-      }
-      // ======================================================================
-
       double inv_ref_expo = visual_submap->inv_expo_list[i];
       // ROS_ERROR("inv_ref_expo: %.3lf, state->inv_expo_time: %.3lf\n", inv_ref_expo, state->inv_expo_time);
 

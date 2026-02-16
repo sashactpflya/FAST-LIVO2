@@ -114,8 +114,8 @@ public:
   
   string root_dir;
   string lid_topic, imu_topic, seq_name, img_topic;
-  V3D extT;
-  M3D extR;
+  V3D extT; ///< Translation from Lidar to Body (T_body_lidar)
+  M3D extR; ///< Rotation from Lidar to Body (R_body_lidar)
 
   int feats_down_size = 0, max_iterations = 0;
 
