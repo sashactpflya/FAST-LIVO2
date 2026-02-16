@@ -122,6 +122,7 @@ public:
   double gyr_cov = 0, acc_cov = 0, inv_expo_cov = 0;
   double blind_rgb_points = 0.0;
   bool colorize_map_en = true;
+  bool pub_rgb_img_en = true;
   double last_timestamp_img = -1.0;
   double filter_size_surf_min = 0;
   double filter_size_pcd = 0;
@@ -129,6 +130,7 @@ public:
   double match_time = 0, solve_time = 0, solve_const_H_time = 0;
 
   bool lidar_map_inited = false, pcd_save_en = false, pub_effect_point_en = false, pose_output_en = false, ros_driver_fix_en = false, hilti_en = false;
+  int video_downsampler = 1;
   int pcd_save_interval = -1, pcd_index = 0;
   int pub_scan_num = 1;
   bool save_dense_map_en = true;
@@ -150,18 +152,38 @@ public:
 
   bool lidar_pushed = false, imu_en, gravity_est_en, flg_reset = false, ba_bg_est_en = true;
   bool dense_map_en = false;
+  bool publish_visible_voxels_en = false;
   int img_en = 1, imu_int_frame = 3;
   bool normal_en = true;
-bool ncc_en = false;
+  bool orientation_check_en = false;
+  double max_view_angle = 85.0;
+  bool ncc_en = false;
   double ncc_outlier_threshold = 0.8;
   bool exposure_estimate_en = false;
   double exposure_time_init = 0.0;
   bool inverse_composition_en = false;
   bool raycast_en = false;
-double depth_discontinuity_threshold = 0.5;
+  bool debug_lidar_projection_en = false;
+  bool generate_projection_images = false;
+  std::vector<int> reconstructed_view_levels;
+  bool publish_sparse_depth_map = false;
+  bool draw_camera_axes_on_rgb = false;
+  bool depth_discontinuity_overlay_on_depth_map = false;
+  bool publish_vio_inliers_outliers_clouds = false;
+  bool publish_vio_optimization_points = true;
+  bool publish_converged_points = false;
+  bool publish_vio_point_candidates = false;
+  bool publish_camera_fov_markers = false;
+  double raycast_d_min = 0.1;
+  double raycast_d_max = 3.0;
+  double raycast_step = 0.2;
+  double depth_discontinuity_threshold = 0.5;
+  double vio_voxel_size = 0.5;
+  bool shitomasi_threshold_enabled = false;
   double new_feature_min_translation = 0.5;
   double new_feature_min_rotation = 0.3;
   double new_feature_min_pixel_dist = 40.0;
+  double min_shitomasi_score = 5.0;
   int lidar_en = 1;
   bool is_first_frame = false;
   int grid_size, patch_size, grid_n_width, grid_n_height, patch_pyrimid_level;
@@ -180,10 +202,14 @@ double depth_discontinuity_threshold = 0.5;
   vector<double> T_camera_lidar_raw;
   std::vector<double> R_camera_lidar_raw;
   bool use_intermediate_extrinsic_ = true; ///< Use body->vio and vio->cam chain to derive lidar->cam
-  std::vector<double> T_vio_camera_raw; ///< Translation of camera in VIO frame
-  std::vector<double> R_vio_camera_raw; ///< Quaternion (qx, qy, qz, qw) for VIO -> Camera
+  std::vector<double> T_camera_vio_raw; ///< Translation of VIO in camera frame
+  std::vector<double> R_camera_vio_raw; ///< Quaternion (qx, qy, qz, qw) for VIO -> Camera
+  int camera_id_ = 0;
+  std::string camera_extrinsics_prefix_;
+  std::string camera_extrinsics_T_param_;
+  std::string camera_extrinsics_R_param_;
   std::vector<double> T_body_vio_raw;       ///< Translation of VIO in IMU frame
-  std::vector<double> R_body_vio_raw;       ///< Quaternion (qx, qy, qz, qw) for IMU -> VIO
+  std::vector<double> R_body_vio_raw;       ///< Quaternion (qx, qy, qz, qw) for VIO -> Body 
   double IMG_POINT_COV;
 
   PointCloudXYZI::Ptr visual_sub_map;

@@ -85,18 +85,25 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   lid_topic = node->declare_parameter<std::string>("common.lid_topic", "/livox/lidar");
   imu_topic = node->declare_parameter<std::string>("common.imu_topic", "/livox/imu");
   ros_driver_fix_en = node->declare_parameter<bool>("common.ros_driver_bug_fix", false);
-  img_en = node->declare_parameter<int>("common.img_en", 1);
-  lidar_en = node->declare_parameter<int>("common.lidar_en", 1);
+  img_en = node->declare_parameter<int>("common.img_en", 0);
+  lidar_en = node->declare_parameter<int>("common.lidar_en", 0);
   img_topic = node->declare_parameter<std::string>("common.img_topic", "/left_camera/image");
 
   normal_en = node->declare_parameter<bool>("vio.normal_en", true);
+  orientation_check_en = node->declare_parameter<bool>("vio.orientation_check_en", false);
+  max_view_angle = node->declare_parameter<double>("vio.max_view_angle", 85.0);
   ncc_en = node->declare_parameter<bool>("vio.ncc_en", false);
   ncc_outlier_threshold = node->declare_parameter<double>("vio.ncc_outlier_threshold", 0.8);
   inverse_composition_en = node->declare_parameter<bool>("vio.inverse_composition_en", false);
   max_iterations = node->declare_parameter<int>("vio.max_iterations", 5);
   IMG_POINT_COV = node->declare_parameter<double>("vio.img_point_cov", 100.0);
   raycast_en = node->declare_parameter<bool>("vio.raycast_en", false);
-depth_discontinuity_threshold = node->declare_parameter<double>("vio.depth_discontinuity_threshold", 0.5);
+  raycast_d_min = node->declare_parameter<double>("vio.raycast_d_min", 0.1);
+  raycast_d_max = node->declare_parameter<double>("vio.raycast_d_max", 3.0);
+  raycast_step = node->declare_parameter<double>("vio.raycast_step", 0.2);
+  depth_discontinuity_threshold = node->declare_parameter<double>("vio.depth_discontinuity_threshold", 0.5);
+  vio_voxel_size = node->declare_parameter<double>("vio.voxel_size", 0.5);
+  shitomasi_threshold_enabled = node->declare_parameter<bool>("vio.enable_shi_tomasi_threshold", false);
   exposure_estimate_en = node->declare_parameter<bool>("vio.exposure_estimate_en", true);
   inv_expo_cov = node->declare_parameter<double>("vio.inv_expo_cov", 0.2);
   grid_size = node->declare_parameter<int>("vio.grid_size", 5);
@@ -104,9 +111,10 @@ depth_discontinuity_threshold = node->declare_parameter<double>("vio.depth_disco
   patch_pyrimid_level = node->declare_parameter<int>("vio.patch_pyrimid_level", 3);
   patch_size = node->declare_parameter<int>("vio.patch_size", 8);
   outlier_threshold = node->declare_parameter<double>("vio.outlier_threshold", 1000.0);
-new_feature_min_translation = node->declare_parameter<double>("vio.new_feature_min_translation", 0.5);
+  new_feature_min_translation = node->declare_parameter<double>("vio.new_feature_min_translation", 0.5);
   new_feature_min_rotation = node->declare_parameter<double>("vio.new_feature_min_rotation", 0.3);
   new_feature_min_pixel_dist = node->declare_parameter<double>("vio.new_feature_min_pixel_dist", 40.0);
+  min_shitomasi_score = node->declare_parameter<double>("vio.min_shitomasi_score", 5.0);
 
   exposure_time_init = node->declare_parameter<double>("time_offset.exposure_time_init", 0.0);
   img_time_offset = node->declare_parameter<double>("time_offset.img_time_offset", 0.0);
@@ -114,6 +122,11 @@ new_feature_min_translation = node->declare_parameter<double>("vio.new_feature_m
   lidar_time_offset = node->declare_parameter<double>("time_offset.lidar_time_offset", 0.0);
   imu_prop_enable = node->declare_parameter<bool>("uav.imu_rate_odom", false);
   gravity_align_en = node->declare_parameter<bool>("uav.gravity_align_en", false);
+
+  camera_id_ = node->declare_parameter<int>("camera_id", 0);
+  camera_extrinsics_prefix_ = "intermediate_camera_extrinsics.cameras.camera_" + std::to_string(camera_id_) + ".";
+  camera_extrinsics_T_param_ = camera_extrinsics_prefix_ + "T_camera_vio";
+  camera_extrinsics_R_param_ = camera_extrinsics_prefix_ + "R_camera_vio";
 
   seq_name = node->declare_parameter<std::string>("evo.seq_name", "01");
   pose_output_en = node->declare_parameter<bool>("evo.pose_output_en", false);
@@ -127,7 +140,8 @@ new_feature_min_translation = node->declare_parameter<double>("vio.new_feature_m
   p_pre->blind = node->declare_parameter<double>("preprocess.blind", 0.01);
   filter_size_surf_min = node->declare_parameter<double>("preprocess.filter_size_surf", 0.5);
   hilti_en = node->declare_parameter<bool>("preprocess.hilti_en", false);
-  p_pre->lidar_type = node->declare_parameter<int>("preprocess.lidar_type", AVIA);
+  video_downsampler = node->declare_parameter<int>("preprocess.video_downsampler", 1);
+  p_pre->lidar_type = node->declare_parameter<int>("preprocess.lidar_type", UNKNOWN);
   p_pre->N_SCANS = node->declare_parameter<int>("preprocess.scan_line", 6);
   p_pre->point_filter_num = node->declare_parameter<int>("preprocess.point_filter_num", 3);
   p_pre->feature_enabled = node->declare_parameter<bool>("preprocess.feature_extract_enabled", false);
@@ -141,12 +155,37 @@ new_feature_min_translation = node->declare_parameter<double>("vio.new_feature_m
   extrinR = node->declare_parameter<std::vector<double>>("extrin_calib.extrinsic_R", extrinR);
   T_camera_lidar_raw = node->declare_parameter<std::vector<double>>("extrin_calib.T_camera_lidar", std::vector<double>{});
   R_camera_lidar_raw = node->declare_parameter<std::vector<double>>("extrin_calib.R_camera_lidar", std::vector<double>{});
-T_vio_camera_raw = node->declare_parameter<std::vector<double>>("extrin_calib.T_vio_camera", std::vector<double>{});
-R_vio_camera_raw = node->declare_parameter<std::vector<double>>("extrin_calib.R_vio_camera", std::vector<double>{});
-T_body_vio_raw = node->declare_parameter<std::vector<double>>("extrin_calib.T_body_vio", std::vector<double>{});
-R_body_vio_raw = node->declare_parameter<std::vector<double>>("extrin_calib.R_body_vio", std::vector<double>{});
-  plot_time = node->declare_parameter<double>("debug.plot_time", -10.0);
-  frame_cnt = node->declare_parameter<int>("debug.frame_cnt", 6);
+  T_camera_vio_raw =
+      node->declare_parameter<std::vector<double>>(camera_extrinsics_T_param_, std::vector<double>{});
+  R_camera_vio_raw =
+      node->declare_parameter<std::vector<double>>(camera_extrinsics_R_param_, std::vector<double>{});
+  T_body_vio_raw =
+      node->declare_parameter<std::vector<double>>("intermediate_camera_extrinsics.T_body_vio", std::vector<double>{});
+  R_body_vio_raw =
+      node->declare_parameter<std::vector<double>>("intermediate_camera_extrinsics.R_body_vio", std::vector<double>{});
+  plot_time = node->declare_parameter<double>("analysis.plot_time", -10.0);
+  frame_cnt = node->declare_parameter<int>("analysis.frame_cnt", 6);
+  debug_lidar_projection_en = node->declare_parameter<bool>("analysis.lidar_projection_en", false);
+  generate_projection_images = node->declare_parameter<bool>("analysis.generate_projection_images", false);
+  const std::vector<int64_t> reconstructed_view_levels_param =
+      node->declare_parameter<std::vector<int64_t>>("analysis.reconstructed_view_levels", std::vector<int64_t>{});
+  reconstructed_view_levels.clear();
+  reconstructed_view_levels.reserve(reconstructed_view_levels_param.size());
+  for (int64_t level : reconstructed_view_levels_param) {
+    reconstructed_view_levels.push_back(static_cast<int>(level));
+  }
+  publish_sparse_depth_map = node->declare_parameter<bool>("analysis.publish_sparse_depth_map", false);
+  draw_camera_axes_on_rgb = node->declare_parameter<bool>("analysis.draw_camera_axes_on_rgb", false);
+  publish_converged_points = node->declare_parameter<bool>("analysis.publish_converged_points", false);
+  publish_camera_fov_markers = node->declare_parameter<bool>("analysis.publish_camera_fov_markers", false);
+  depth_discontinuity_overlay_on_depth_map =
+      node->declare_parameter<bool>("analysis.depth_discontinuity_overlay_on_depth_map", false);
+  publish_vio_inliers_outliers_clouds =
+      node->declare_parameter<bool>("analysis.publish_vio_inliers_outliers_clouds", false);
+  publish_vio_optimization_points =
+      node->declare_parameter<bool>("analysis.publish_vio_optimization_points", false);
+  publish_vio_point_candidates =
+      node->declare_parameter<bool>("analysis.publish_vio_point_candidates", false);
 
   blind_rgb_points = node->declare_parameter<double>("publish.blind_rgb_points", 0.01);
   colorize_map_en = node->declare_parameter<bool>("common.colorize_map_en", true);
