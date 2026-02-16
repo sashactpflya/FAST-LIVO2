@@ -103,9 +103,9 @@ void VIOManager::initializeVIO()
     rays_with_sample_points.reserve(length);
     spdlog::info("[ VIO ] grid_size: {:d}, grid_n_height: {:d}, grid_n_width: {:d}, length: {:d}", grid_size, grid_n_height, grid_n_width, length);
 
-    float d_min = 0.1;
-    float d_max = 3.0;
-    float step = 0.2;
+    const double d_min = raycast_d_min;
+    const double d_max = raycast_d_max;
+    const double step = raycast_step;
     for (int grid_row = 1; grid_row <= grid_n_height; grid_row++)
     {
       for (int grid_col = 1; grid_col <= grid_n_width; grid_col++)
@@ -118,7 +118,7 @@ void VIOManager::initializeVIO()
         int u = grid_size / 2 + (grid_col - 1) * grid_size;
         int v = grid_size / 2 + (grid_row - 1) * grid_size;
         // it[ u + v * width ] = 255;
-        for (float d_temp = d_min; d_temp <= d_max; d_temp += step)
+        for (double d_temp = d_min; d_temp <= d_max; d_temp += step)
         {
           V3D xyz;
           xyz = cam->cam2world(u, v);
@@ -258,7 +258,7 @@ void VIOManager::insertPointIntoVoxelMap(VisualPoint *pt_new)
   float loc_xyz[3];
   for (int j = 0; j < 3; j++)
   {
-    loc_xyz[j] = pt_w[j] / voxel_size;
+    loc_xyz[j] = pt_w[j] / voxel_size_;
     if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
   }
   VOXEL_LOCATION position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1], (int64_t)loc_xyz[2]);
@@ -391,8 +391,6 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
   // Controls whether to include the visual submap from the previous frame.
   sub_feat_map.clear();
 
-  float voxel_size = 0.5;
-
   if (!normal_en) warp_map.clear();
 
   cv::Mat depth_img = cv::Mat::zeros(height, width, CV_32FC1);
@@ -418,7 +416,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
     for (int j = 0; j < 3; j++)
     {
-      loc_xyz[j] = floor(pt_w[j] / voxel_size);
+      // This double floor is there in the original code, and it may induce bugs in voxel indexing.
+      // TODO: Implement a function toVoxelLocation() to avoid such confusion and improve uniformity.
+      loc_xyz[j] = floor(pt_w[j] / voxel_size_);
       if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
     }
     VOXEL_LOCATION position(loc_xyz[0], loc_xyz[1], loc_xyz[2]);
@@ -534,7 +534,8 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
         for (int j = 0; j < 3; j++)
         {
-          loc_xyz[j] = floor(sample_point_w[j] / voxel_size);
+          // TODO: Replace by loc_xyz[j] = floor(sample_point_w[j] / voxel_size_);
+          loc_xyz[j] = sample_point_w[j] / voxel_size_;
           if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
         }
 
@@ -643,7 +644,7 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
       // cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 3, cv::Scalar(0, 0, 255), -1, 8); // Green Sparse Align tracked
 
       V3D pt_cam(new_frame_->w2f(pt->pos_));
-      bool depth_discontinous = false;
+      bool depth_discontinuous = false;
       for (int u = -patch_size_half; u <= patch_size_half; u++)
       {
         for (int v = -patch_size_half; v <= patch_size_half; v++)
@@ -658,13 +659,13 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
           if (delta_dist > depth_discontinuity_threshold)
           {
-            depth_discontinous = true;
+            depth_discontinuous = true;
             break;
           }
         }
-        if (depth_discontinous) break;
+        if (depth_discontinuous) break;
       }
-      if (depth_discontinous) continue;
+      if (depth_discontinuous) {
 
       // t_2 += fast_livo::utils::getWTime() - t_1;
 
@@ -1010,7 +1011,8 @@ void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelO
     float loc_xyz[3];
     for (int j = 0; j < 3; j++)
     {
-      loc_xyz[j] = p_w[j] / 0.5;
+      // TODO: Replace by loc_xyz[j] = floor(p_w[j] / voxel_size_);
+      loc_xyz[j] = p_w[j] / voxel_size_;
       if (loc_xyz[j] < 0) { loc_xyz[j] -= 1.0; }
     }
     VOXEL_LOCATION position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1], (int64_t)loc_xyz[2]);

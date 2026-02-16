@@ -387,6 +387,7 @@ void LIVMapper::initializeComponents()
   vio_manager->state = &_state;
   vio_manager->state_propagat = &state_propagat;
   vio_manager->max_iterations = max_iterations;
+  vio_manager->setVoxelSize(vio_voxel_size);
   vio_manager->img_point_cov = IMG_POINT_COV;
   vio_manager->normal_en = normal_en;
   vio_manager->inverse_composition_en = inverse_composition_en;

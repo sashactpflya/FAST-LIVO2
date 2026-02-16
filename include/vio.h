@@ -100,6 +100,8 @@ public:
   vector<float> scan_value;
   vector<float> patch_buffer;
   bool normal_en, inverse_composition_en, exposure_estimate_en, raycast_en, has_ref_patch_cache;
+  bool orientation_check_en;
+  bool shitomasi_threshold_enabled = false;
   bool ncc_en = false, colmap_output_en = false;
 
   int width, height, grid_n_width, grid_n_height, length;
@@ -108,12 +110,17 @@ public:
   int patch_pyrimid_level, patch_size, patch_size_total, patch_size_half, border, warp_len;
   int max_iterations, total_points;
 
-  double img_point_cov, outlier_threshold; 
+  double img_point_cov, outlier_threshold;
   double ncc_threshold; ///< Rejection threshold with NCC
-double depth_discontinuity_threshold;
+  double depth_discontinuity_threshold;
   double new_feature_min_translation;
   double new_feature_min_rotation;
   double new_feature_min_pixel_dist;
+  double min_shitomasi_score = 5.0;
+  double raycast_d_min = 0.1;
+  double raycast_d_max = 3.0;
+  double raycast_step = 0.2;
+  double orientation_check_cos_threshold;
   
   SubSparseMap *visual_submap;
   std::vector<std::vector<V3D>> rays_with_sample_points;
@@ -178,6 +185,8 @@ double depth_discontinuity_threshold;
   double calculateNCC(float *ref_patch, float *cur_patch, int patch_size);
   int getBestSearchLevel(const Matrix2d &A_cur_ref, const int max_level);
   V3F getInterpolatedPixel(cv::Mat img, V2D pc);
+  void setVoxelSize(double size) { voxel_size_ = size; }
+  double getVoxelSize() const { return voxel_size_; }
   
   // void resetRvizDisplay();
   // deque<VisualPoint *> map_cur_frame;
@@ -189,6 +198,8 @@ double depth_discontinuity_threshold;
 
   // PointCloudXYZI::Ptr pg_down;
   // pcl::VoxelGrid<PointType> downSizeFilter;
+private:
+  double voxel_size_ = 0.5; ///< Voxel size of the visual sparse map
 };
 typedef std::shared_ptr<VIOManager> VIOManagerPtr;
 
