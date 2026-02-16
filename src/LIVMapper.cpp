@@ -212,6 +212,13 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   dense_map_en = node->declare_parameter<bool>("publish.dense_map_en", false);
   pub_rgb_img_en = node->declare_parameter<bool>("publish.pub_rgb_img", true);
   publish_visible_voxels_en = node->declare_parameter<bool>("publish.publish_visible_voxels", false);
+
+  use_intermediate_extrinsic_ =
+      node->declare_parameter<bool>("intermediate_camera_extrinsics.use_intermediate_extrinsic", false);
+  if (!node->has_parameter("intermediate_camera_extrinsics.use_intermediate_extrinsic"))
+  {
+    use_intermediate_extrinsic_ = node->declare_parameter<bool>("extrin_calib.use_intermediate_extrinsic", false);
+  }
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 }
 
