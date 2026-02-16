@@ -9,8 +9,7 @@
 #include "LIVMapper.h"
 #include "utils/ros_pcl_conversions.h"
 
-namespace fast_livo {
-namespace analysis {
+namespace fast_livo::analysis {
 
 void publishVioEsikfIterations(const AnalysisPublishers &publishers, const std::vector<int> &iterations)
 {
@@ -506,5 +505,4 @@ void publishProjectedLidarCamera(const AnalysisPublishers &publishers, const VIO
   publishers.projected_lidar_camera(*out_msg.toImageMsg());
 }
 
-}  // namespace analysis
-}  // namespace fast_livo
+}  // namespace fast_livo::analysis

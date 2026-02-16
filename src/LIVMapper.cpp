@@ -13,8 +13,12 @@ which is included as part of this source code package.
 #include "LIVMapper.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
+
+#include <geometry_msgs/msg/point.hpp>
+#include <opencv2/imgproc.hpp>
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/filter.h>
 #include <rclcpp/clock.hpp>
@@ -23,11 +27,12 @@ which is included as part of this source code package.
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 
-#include "utils/color.h"
+#include "analysis_publishers.h"
 #include "utils/ros_tf2_conversions.hpp"
 #include "utils/ros_pcl_conversions.h"
 #include "utils/camera_loader.hpp"
 #include "utils/time.hpp"
+#include "utils/draw.hpp"
 
 namespace fast_livo {
 
@@ -59,6 +64,7 @@ LIVMapper::LIVMapper(rclcpp::Node::SharedPtr node)
 
   visual_sub_map = std::make_shared<PointCloudXYZI>();
   feats_undistort = std::make_shared<PointCloudXYZI>();
+  feats_undistort_latched = std::make_shared<PointCloudXYZI>();
   feats_down_body = std::make_shared<PointCloudXYZI>();
   feats_down_world = std::make_shared<PointCloudXYZI>();
   pcl_w_wait_pub = std::make_shared<PointCloudXYZI>();
@@ -137,10 +143,22 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   gravity_est_en = node->declare_parameter<bool>("imu.gravity_est_en", true);
   ba_bg_est_en = node->declare_parameter<bool>("imu.ba_bg_est_en", true);
 
+  // Append mode suffix for evo output file name.
+  const std::string mode_suffix = (img_en && imu_en) ? "_LVIO" : (imu_en ? "_LIO" : "_LO");
+  if (seq_name.size() < mode_suffix.size() ||
+      seq_name.compare(seq_name.size() - mode_suffix.size(), mode_suffix.size(), mode_suffix) != 0)
+  {
+    seq_name += mode_suffix;
+  }
+
+  // Preprocess configuration
   p_pre->blind = node->declare_parameter<double>("preprocess.blind", 0.01);
   filter_size_surf_min = node->declare_parameter<double>("preprocess.filter_size_surf", 0.5);
   hilti_en = node->declare_parameter<bool>("preprocess.hilti_en", false);
   video_downsampler = node->declare_parameter<int>("preprocess.video_downsampler", 1);
+  if (video_downsampler < 1) {
+    video_downsampler = 1;
+  }
   p_pre->lidar_type = node->declare_parameter<int>("preprocess.lidar_type", UNKNOWN);
   p_pre->N_SCANS = node->declare_parameter<int>("preprocess.scan_line", 6);
   p_pre->point_filter_num = node->declare_parameter<int>("preprocess.point_filter_num", 3);
@@ -192,6 +210,7 @@ void LIVMapper::readParameters(const rclcpp::Node::SharedPtr &node)
   pub_scan_num = node->declare_parameter<int>("publish.pub_scan_num", 1);
   pub_effect_point_en = node->declare_parameter<bool>("publish.pub_effect_point_en", false);
   dense_map_en = node->declare_parameter<bool>("publish.dense_map_en", false);
+  pub_rgb_img_en = node->declare_parameter<bool>("publish.pub_rgb_img", true);
   publish_visible_voxels_en = node->declare_parameter<bool>("publish.publish_visible_voxels", false);
   p_pre->blind_sqr = p_pre->blind * p_pre->blind;
 }
@@ -389,9 +408,14 @@ void LIVMapper::initializeComponents()
   vio_manager->setVoxelSize(vio_voxel_size);
   vio_manager->img_point_cov = IMG_POINT_COV;
   vio_manager->normal_en = normal_en;
+  vio_manager->orientation_check_en = orientation_check_en;
+  vio_manager->orientation_check_cos_threshold = std::cos(max_view_angle * M_PI / 180.0);
   vio_manager->inverse_composition_en = inverse_composition_en;
   vio_manager->raycast_en = raycast_en;
-vio_manager->depth_discontinuity_threshold = depth_discontinuity_threshold;
+  vio_manager->raycast_d_min = raycast_d_min;
+  vio_manager->raycast_d_max = raycast_d_max;
+  vio_manager->raycast_step = raycast_step;
+  vio_manager->depth_discontinuity_threshold = depth_discontinuity_threshold;
   vio_manager->grid_n_width = grid_n_width;
   vio_manager->grid_n_height = grid_n_height;
   vio_manager->patch_pyrimid_level = patch_pyrimid_level;
@@ -399,10 +423,18 @@ vio_manager->depth_discontinuity_threshold = depth_discontinuity_threshold;
   vio_manager->colmap_output_en = colmap_output_en;
   vio_manager->ncc_en = ncc_en;
   vio_manager->ncc_threshold = ncc_outlier_threshold;
-vio_manager->new_feature_min_translation = new_feature_min_translation;
+  vio_manager->new_feature_min_translation = new_feature_min_translation;
   vio_manager->new_feature_min_rotation = new_feature_min_rotation;
   vio_manager->new_feature_min_pixel_dist = new_feature_min_pixel_dist;
+  vio_manager->min_shitomasi_score = min_shitomasi_score;
+  vio_manager->shitomasi_threshold_enabled = shitomasi_threshold_enabled;
+  vio_manager->setGenerateReconstructedView(generate_projection_images);
+  vio_manager->setGenerateSparseDepthMap(publish_sparse_depth_map);
+  vio_manager->setDepthDiscontinuityOverlayOnDepthMap(depth_discontinuity_overlay_on_depth_map);
+  vio_manager->setRgbOutputEnabled(pub_rgb_img_en);
   vio_manager->initializeVIO();
+
+  // Initialize IMU processing
 
   p_imu->set_extrinsic(extT, extR);
   p_imu->set_gyr_cov_scale(V3D(gyr_cov, gyr_cov, gyr_cov));
@@ -486,6 +518,9 @@ void LIVMapper::initializeSubscribersAndPublishers()
   pubLaserCloudDynRmed = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/dyn_obj_removed", 100);
   pubLaserCloudDynDbg = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/dyn_obj_dbg_hist", 100);
   mavros_pose_publisher = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/livo2/mavros/vision_pose/pose", 10);
+  if (pub_rgb_img_en) {
+    pubImage = node_->create_publisher<sensor_msgs::msg::Image>("/livo2/rgb_img", 1);
+  }
   pubVisualPatchesBody = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/livo2/vio_patches_body", 10);
   pubImuPropOdom = node_->create_publisher<nav_msgs::msg::Odometry>("/livo2/LIVO2/imu_propagate", 10000);
   imu_prop_timer = node_->create_wall_timer(
@@ -564,6 +599,9 @@ void LIVMapper::processImu()
   // double t0 = fast_livo::utils::getWTime();
 
   p_imu->Process2(LidarMeasures, _state, feats_undistort);
+  if (feats_undistort && !feats_undistort->empty()) {
+    *feats_undistort_latched = *feats_undistort;
+  }
 
   if (gravity_align_en) gravityAlignment();
 
@@ -629,25 +667,124 @@ void LIVMapper::handleVIO()
     state_update_flg = true;
   }
 
-  // int size_sub_map = vio_manager->visual_sub_map_cur.size();
-  // visual_sub_map->reserve(size_sub_map);
-  // for (int i = 0; i < size_sub_map; i++) 
-  // {
-  //   PointType temp_map;
-  //   temp_map.x = vio_manager->visual_sub_map_cur[i]->pos_[0];
-  //   temp_map.y = vio_manager->visual_sub_map_cur[i]->pos_[1];
-  //   temp_map.z = vio_manager->visual_sub_map_cur[i]->pos_[2];
-  //   temp_map.intensity = 0.;
-  //   visual_sub_map->push_back(temp_map);
-  // }
+  if (visual_sub_map) {
+    visual_sub_map->clear();
+    if (vio_manager && vio_manager->visual_submap) {
+      const auto &voxel_points = vio_manager->visual_submap->voxel_points;
+      const int total = std::min(vio_manager->total_points, static_cast<int>(voxel_points.size()));
+      if (total > 0) {
+        visual_sub_map->reserve(total);
+        for (int i = 0; i < total; ++i) {
+          VisualPoint *vp = voxel_points[i];
+          if (vp == nullptr) continue;
+          PointType temp_map;
+          temp_map.x = vp->pos_[0];
+          temp_map.y = vp->pos_[1];
+          temp_map.z = vp->pos_[2];
+          temp_map.intensity = 0.0f;
+          visual_sub_map->push_back(temp_map);
+        }
+      }
+    }
+  }
 
   publish_frame_world(pubLaserCloudFullRes, vio_manager, current_stamp);
-  publish_img_rgb(pubImage, vio_manager, current_stamp);
+  if (pub_rgb_img_en) publish_img_rgb(pubImage, vio_manager, current_stamp);
+  publish_visual_sub_map(pubSubVisualMap, current_stamp);
+  publish_visual_patches_body(current_stamp);
+  if (publish_visible_voxels_en) publish_visible_voxels(current_stamp);
+
+  // Additional statistics publishing
+  publishAnalysisData(current_stamp);
 
   euler_cur = RotMtoEuler(_state.rot_end);
   fout_out << std::setw(20) << LidarMeasures.last_lio_update_time - _first_lidar_time << " " << euler_cur.transpose() * 57.3 << " "
             << _state.pos_end.transpose() << " " << _state.vel_end.transpose() << " " << _state.bias_g.transpose() << " "
             << _state.bias_a.transpose() << " " << V3D(_state.inv_expo_time, 0, 0).transpose() << " " << feats_undistort->points.size() << std::endl;
+}
+
+void LIVMapper::publishAnalysisData(const rclcpp::Time &current_stamp)
+{
+  using namespace analysis;
+
+  // VIO
+  const auto &vio_stats = vio_manager->getVioAnalysisData();
+
+  publishVioEsikfIterations(analysis_publishers_, vio_stats.last_esikf_iterations_per_level_);
+  publishVioFeatureCounts(analysis_publishers_, vio_stats.last_esikf_feature_counts_per_level_);
+  publishVioInlierCount(analysis_publishers_, vio_stats.last_inlier_count_);
+  publishVioOutlierCount(analysis_publishers_, vio_stats.last_outlier_count_);
+  publishVioRaycastCount(analysis_publishers_, vio_stats.last_raycast_retrieved_count_);
+  publishVioAddedVisualPoints(analysis_publishers_, vio_stats.last_added_visual_points_);
+  publishDiscardedVisualGeneration(
+      analysis_publishers_,
+      vio_stats.last_discarded_visual_generation_null_normal_count_,
+      vio_stats.last_discarded_visual_generation_out_of_frame_count_,
+      vio_stats.last_discarded_visual_generation_proportion_);
+  publishVioCommonTrackedPoints(analysis_publishers_, vio_stats.last_common_tracked_points_);
+  publishVioDepthDiscontinuityRejects(analysis_publishers_, vio_stats.last_depth_discontinuity_rejects_);
+  publishVioShiTomasiStats(analysis_publishers_,
+                                     vio_stats.last_shitomasi_avg_,
+                                     vio_stats.last_shitomasi_min_,
+                                     vio_stats.last_shitomasi_max_);
+
+  if (publish_vio_point_candidates && analysis_publishers_.vio_point_candidates &&
+      vio_manager && vio_manager->new_frame_) {
+    
+    std::vector<V3D> points_cam;
+    points_cam.reserve(_pv_list.size()); // PV list contains points in LiDAR frame
+    for (const auto &pwv : _pv_list) {
+      points_cam.push_back(vio_manager->new_frame_->w2f(pwv.point_w));
+    }
+    publishVioPointCandidates(analysis_publishers_, _pv_list, points_cam, current_stamp,
+                                        "init_pose", camera_frame_id_);
+  }
+
+  publishVioSparseDepthMap(analysis_publishers_, vio_stats.depth_discontinuity_overlay_, current_stamp);
+  if (generate_projection_images && !reconstructed_view_levels.empty() && vio_manager && vio_manager->new_frame_) {
+    cv::Mat reconstructed;
+    for (int level : reconstructed_view_levels) {
+      if (level < 0 || level >= vio_manager->patch_pyrimid_level) continue;
+      vio_manager->buildReconstructedView(vio_manager->new_frame_->img_, reconstructed, level);
+      publishVioReconstructedView(analysis_publishers_, level, reconstructed, current_stamp);
+    }
+  }
+  if (publish_vio_inliers_outliers_clouds) {
+    publishVioInliersOutliersClouds(analysis_publishers_,
+                                              vio_stats.last_vio_inlier_points_,
+                                              vio_stats.last_vio_outlier_points_,
+                                              current_stamp);
+  }
+  publishVioOptimizationPointCount(
+      analysis_publishers_,
+      static_cast<int>(vio_stats.last_vio_optimization_points_.size()));
+  if (publish_vio_optimization_points) {
+    publishVioOptimizationPoints(analysis_publishers_,
+                                        vio_stats.last_vio_optimization_points_,
+                                        current_stamp);
+  }
+  publishVioConvergedPointCount(
+      analysis_publishers_,
+      vio_stats.last_converged_point_count_);
+  if (publish_converged_points) {
+    publishVioConvergedPoints(analysis_publishers_,
+                                        vio_stats.last_converged_points_,
+                                        current_stamp);
+  }
+  if (publish_camera_fov_markers) {
+    publishCameraFov(analysis_publishers_, vio_manager.get(), current_stamp, TF_cam_lidar_.inverse(), TF_cam_body_.inverse());
+  }
+
+  publishEkfBiases(analysis_publishers_, _state.bias_g, _state.bias_a);
+
+  if (debug_lidar_projection_en) {
+    publishProjectedLidarCamera(analysis_publishers_,
+                                vio_manager.get(),
+                                feats_undistort_latched,
+                                TF_cam_lidar_,
+                                TF_lidar_body_,
+                                current_stamp);
+  }
 }
 
 void LIVMapper::handleLIO() 
@@ -664,6 +801,13 @@ void LIVMapper::handleLIO()
     spdlog::info("[ LIO ]: No point!!!");
     return;
   }
+
+  // Otherwise, continue as normal and latch the undistorted features
+  if (!feats_undistort_latched) {
+    feats_undistort_latched.reset(new PointCloudXYZI());
+  }
+  *feats_undistort_latched = *feats_undistort;
+  
 
   double t0 = fast_livo::utils::getWTime();
 
@@ -689,6 +833,8 @@ void LIVMapper::handleLIO()
   voxelmap_manager->StateEstimation(state_propagat);
   _state = voxelmap_manager->state_;
   _pv_list = voxelmap_manager->pv_list_;
+  analysis::publishLioEsikfIterations(analysis_publishers_, voxelmap_manager->getLastEsikfIterations());
+  analysis::publishEkfBiases(analysis_publishers_, _state.bias_g, _state.bias_a);
 
   double t2 = fast_livo::utils::getWTime();
 
@@ -1245,13 +1391,12 @@ void LIVMapper::img_cbk(const sensor_msgs::msg::Image::ConstSharedPtr &msg_in)
   //   msg->header.stamp = ros::Time().fromSec(last_timestamp_img + 0.1);
   // }
 
-  // Hiliti2022 40Hz
-  if (hilti_en)
+  static int frame_counter = 0;
+  if (video_downsampler > 1)
   {
-    static int frame_counter = 0;
-    if (++frame_counter % 4 != 0) return;
+    if (++frame_counter % video_downsampler != 0) return;
   }
-  // double msg_header_time =  msg->header.stamp.toSec();
+
   double msg_header_time = rclcpp::Time(msg->header.stamp).seconds() + img_time_offset;
   if (abs(msg_header_time - last_timestamp_img) < 0.001)
     return;
@@ -1533,6 +1678,11 @@ void LIVMapper::publish_img_rgb(const rclcpp::Publisher<sensor_msgs::msg::Image>
 {
   (void)pubImage;
   cv::Mat img_rgb = vio_manager->img_cp;
+  if (img_rgb.empty()) return;
+  
+  if (draw_camera_axes_on_rgb) {
+    utils::drawCameraAxesOnRgb(img_rgb);
+  }
   cv_bridge::CvImage out_msg;
   out_msg.header.stamp = stamp;
   out_msg.header.frame_id = "init_pose";
@@ -1660,7 +1810,6 @@ void LIVMapper::publish_frame_world(
 
 void LIVMapper::publish_visual_sub_map(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr &pubSubVisualMap, const rclcpp::Time &stamp)
 {
-  (void)pubSubVisualMap;
   PointCloudXYZI::Ptr laserCloudFullRes(visual_sub_map);
   int size = laserCloudFullRes->points.size(); if (size == 0) return;
   PointCloudXYZI::Ptr sub_pcl_visual_map_pub(new PointCloudXYZI());
@@ -1894,6 +2043,11 @@ void LIVMapper::setAppPublishers(AppPublishers publishers)
   if (voxelmap_manager) {
     voxelmap_manager->setVoxelMapPublisher(&app_publishers_.voxel_map);
   }
+}
+
+void LIVMapper::setAnalysisPublishers(AnalysisPublishers publishers)
+{
+  analysis_publishers_ = std::move(publishers);
 }
 
 void LIVMapper::resetRosInterfaces()

@@ -26,6 +26,9 @@ which is included as part of this source code package.
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_broadcaster.h>
+#include <std_msgs/msg/int32_multi_array.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
 
 #include "IMU_Processing.h"
 #include "vio.h"
@@ -136,11 +139,14 @@ public:
   void publish_mavros(const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr &mavros_pose_publisher, const rclcpp::Time &stamp);
   void publish_path(const rclcpp::Time &stamp);
   void publishStaticTf();
+  void publish_tf_hold();
+  void publishAnalysisData(const rclcpp::Time &current_stamp);
   void readParameters(const rclcpp::Node::SharedPtr &node);
   template <typename T> void set_posestamp(T &out);
   template <typename T> void pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi, Eigen::Matrix<T, 3, 1> &po);
   template <typename T> Eigen::Matrix<T, 3, 1> pointBodyToWorld(const Eigen::Matrix<T, 3, 1> &pi);
   void setAppPublishers(AppPublishers publishers);
+  void setAnalysisPublishers(AnalysisPublishers publishers);
   cv::Mat getImageFromMsg(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg);
   rclcpp::Time makeTimeFromSeconds(double seconds) const;
 
@@ -257,6 +263,7 @@ public:
 
   PointCloudXYZI::Ptr visual_sub_map;
   PointCloudXYZI::Ptr feats_undistort;
+  PointCloudXYZI::Ptr feats_undistort_latched;
   PointCloudXYZI::Ptr feats_down_body;
   PointCloudXYZI::Ptr feats_down_world;
   PointCloudXYZI::Ptr pcl_w_wait_pub;
@@ -332,6 +339,7 @@ public:
     std::string vio_frame_id_ = "vio";
     std::string camera_frame_id_ = "camera";
     AppPublishers app_publishers_;
+    AnalysisPublishers analysis_publishers_;
 
     std::optional<rclcpp::Time> last_timestamp_lidar_;
     std::optional<rclcpp::Time> last_timestamp_imu_;

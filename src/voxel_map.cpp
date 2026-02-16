@@ -371,6 +371,8 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
   body_cov_list_.clear();
   body_cov_list_.reserve(feats_down_size_);
 
+  int iter_count = 0;
+
   // build_residual_time = 0.0;
   // ekf_time = 0.0;
   // double t0 = fast_livo::utils::getWTime();
@@ -400,6 +402,7 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
   bool flg_EKF_inited, flg_EKF_converged, EKF_stop_flg = 0;
   for (int iterCount = 0; iterCount < config_setting_.max_iterations_; iterCount++)
   {
+    ++iter_count;
     double total_residual = 0.0;
     pcl::PointCloud<pcl::PointXYZI>::Ptr world_lidar(new pcl::PointCloud<pcl::PointXYZI>);
     TransformLidar(state_.rot_end, state_.pos_end, feats_down_body_, world_lidar);
@@ -536,6 +539,8 @@ void VoxelMapManager::StateEstimation(StatesGroup &state_propagat)
     }
     if (EKF_stop_flg) break;
   }
+
+  last_esikf_iterations_ = iter_count;
 
   // double t2 = fast_livo::utils::getWTime();
   // scan_count++;
@@ -851,7 +856,9 @@ void VoxelMapManager::pubVoxelMap()
     else { alpha = 0; }
     pubSinglePlane(voxel_plane, "plane", pub_plane_list[i], alpha, plane_rgb);
   }
-  voxel_map_pub_->publish(voxel_plane);
+  if (pubVoxelMapFunc_) {
+    (*pubVoxelMapFunc_)(voxel_plane);
+  }
   loop.sleep();
 }
 
@@ -877,7 +884,7 @@ void VoxelMapManager::pubSinglePlane(visualization_msgs::msg::MarkerArray &plane
 {
   visualization_msgs::msg::Marker plane;
   plane.header.frame_id = "init_pose";
-  plane.header.stamp = rclcpp::Clock().now(); // TODO: Fix
+  plane.header.stamp = rclcpp::Time(); // TODO: Fix
   plane.ns = plane_ns;
   plane.id = single_plane.id_;
   plane.type = visualization_msgs::msg::Marker::CYLINDER;

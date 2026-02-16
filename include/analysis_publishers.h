@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+
 #include <rclcpp/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -11,6 +12,7 @@
 #include <tf2/LinearMath/Transform.h>
 #include <opencv2/core.hpp>
 
+#include "vio.h"
 #include "common_lib.h"
 
 namespace fast_livo {
@@ -19,6 +21,8 @@ struct AnalysisPublishers;
 class VIOManager;
 
 namespace analysis {
+
+void publishVioAnalysisData(const AnalysisPublishers &publishers, const VioAnalysisData &vio_analysis_data);
 
 void publishVioEsikfIterations(const AnalysisPublishers &publishers, const std::vector<int> &iterations);
 void publishVioFeatureCounts(const AnalysisPublishers &publishers, const std::vector<int> &features);

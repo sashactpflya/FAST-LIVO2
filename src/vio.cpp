@@ -12,9 +12,12 @@ which is included as part of this source code package.
 
 #include "vio.h"
 
+#include <algorithm>
+
 #include <spdlog/spdlog.h>
 
 #include "feature.h"
+#include "utils/draw.hpp"
 #include "utils/time.hpp"
 
 namespace fast_livo
@@ -26,6 +29,8 @@ VIOManager::VIOManager() {
   new_feature_min_rotation = 0.3;
   new_feature_min_pixel_dist = 40.0;
   depth_discontinuity_threshold = 0.5;
+  orientation_check_en = false;
+  orientation_check_cos_threshold = 0.08;
 }
 
 VIOManager::~VIOManager()
@@ -368,6 +373,8 @@ double VIOManager::calculateNCC(float *ref_patch, float *cur_patch, int patch_si
 
 void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map)
 {
+  analysis_data_.last_raycast_retrieved_count_ = 0;
+  analysis_data_.last_depth_discontinuity_rejects_ = 0;
   if (feat_map.size() <= 0) return;
   double ts0 = fast_livo::utils::getWTime();
 
@@ -385,6 +392,14 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
   cv::Mat depth_img = cv::Mat::zeros(height, width, CV_32FC1);
   float *it = (float *)depth_img.data;
+
+  if (generate_sparse_depth_map_) {
+    analysis_data_.depth_discontinuity_depth_map_ = cv::Mat::zeros(height, width, CV_8UC1);
+    analysis_data_.depth_discontinuity_overlay_ = cv::Mat::zeros(height, width, CV_8UC3);
+  } else {
+    analysis_data_.depth_discontinuity_depth_map_.release();
+    analysis_data_.depth_discontinuity_overlay_.release();
+  }
 
   // float it[height * width] = {0.0};
 
@@ -501,6 +516,8 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
         V3D dir(new_frame_->T_f_w_ * pt->pos_);
         if (dir[2] < 0) continue;
         // dir.normalize();
+
+        // TODO: Add angle filtering
         // if (dir.dot(norm_vec) <= 0.17) continue; // 0.34 70 degree  0.17 80 degree 0.08 85 degree
 
         V2D pc(new_frame_->w2c(pt->pos_));
@@ -594,6 +611,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
 
               voxel_in_fov = true;
               int index = static_cast<int>(pc[1] / grid_size) * grid_n_width + static_cast<int>(pc[0] / grid_size);
+              if (grid_num[index] != TYPE_MAP) {
+                ++analysis_data_.last_raycast_retrieved_count_;
+              }
               grid_num[index] = TYPE_MAP;
               Vector3d obs_vec(new_frame_->pos() - pt->pos_);
 
@@ -701,6 +721,9 @@ void VIOManager::retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &
         if (depth_discontinuous) break;
       }
       if (depth_discontinuous) {
+        ++analysis_data_.last_depth_discontinuity_rejects_;
+        continue;
+      }
 
       // t_2 += fast_livo::utils::getWTime() - t_1;
 
@@ -867,26 +890,158 @@ void VIOManager::computeJacobianAndUpdateEKF(cv::Mat img)
   if (total_points == 0) return;
   
   compute_jacobian_time = update_ekf_time = 0.0;
+  analysis_data_.last_esikf_iterations_per_level_.assign(patch_pyrimid_level, 0);
+  analysis_data_.last_esikf_feature_counts_per_level_.assign(patch_pyrimid_level, 0);
+  analysis_data_.last_vio_optimization_points_.clear();
+  analysis_data_.last_vio_optimization_flags_.assign(total_points, 0);
 
   for (int level = patch_pyrimid_level - 1; level >= 0; level--)
   {
+    int iterations = 0;
     if (inverse_composition_en)
     {
       has_ref_patch_cache = false;
-      updateStateInverse(img, level);
+      iterations = updateStateInverse(img, level);
     }
     else
-      updateState(img, level);
+    {
+      iterations = updateState(img, level);
+    }
+    
+    analysis_data_.last_esikf_iterations_per_level_[level] = iterations;
   }
   state->cov -= G * state->cov;
   updateFrameState(*state);
 }
 
+void VIOManager::updateVioStatistics()
+{
+  if (!visual_submap) return;
+
+  const size_t total = std::min(
+      {visual_submap->voxel_points.size(), visual_submap->errors.size(), visual_submap->propa_errors.size(),
+       static_cast<size_t>(total_points)});
+  int outliers = 0;
+  for (size_t i = 0; i < total; ++i)
+  {
+    VisualPoint *vp = visual_submap->voxel_points[i];
+    if (vp == nullptr) continue;
+    if (visual_submap->errors[i] > visual_submap->propa_errors[i]) {
+      ++outliers;
+    }
+  }
+
+  analysis_data_.last_outlier_count_ = outliers;
+  analysis_data_.last_inlier_count_ = static_cast<int>(total) - analysis_data_.last_outlier_count_;
+
+  const size_t converged_size = visual_converged_point.size();
+  analysis_data_.last_converged_point_count_ = static_cast<int>(converged_size);
+  if (converged_size == 0)
+  {
+    analysis_data_.last_converged_points_.clear();
+  }
+  else if (analysis_data_.last_converged_points_.size() != converged_size)
+  {
+    analysis_data_.last_converged_points_.clear();
+    analysis_data_.last_converged_points_.reserve(converged_size);
+    for (VisualPoint *vp : visual_converged_point)
+    {
+      if (vp == nullptr || !vp->is_converged_) continue;
+      analysis_data_.last_converged_points_.push_back(vp->pos_);
+    }
+    analysis_data_.last_converged_point_count_ = static_cast<int>(analysis_data_.last_converged_points_.size());
+  }
+}
+
+void VIOManager::updateCommonTrackedPoints()
+{
+  if (analysis_data_.last_vio_optimization_flags_.empty())
+  {
+    analysis_data_.last_common_tracked_points_ = 0;
+    analysis_data_.prev_vio_optimization_flags_.clear();
+    return;
+  }
+
+  if (analysis_data_.prev_vio_optimization_flags_.empty())
+  {
+    analysis_data_.last_common_tracked_points_ = 0;
+    analysis_data_.prev_vio_optimization_flags_ = analysis_data_.last_vio_optimization_flags_;
+    return;
+  }
+
+  const size_t count = std::min(analysis_data_.prev_vio_optimization_flags_.size(), analysis_data_.last_vio_optimization_flags_.size());
+  int common = 0;
+  for (size_t i = 0; i < count; ++i)
+  {
+    if (analysis_data_.prev_vio_optimization_flags_[i] && analysis_data_.last_vio_optimization_flags_[i]) ++common;
+  }
+  analysis_data_.last_common_tracked_points_ = common;
+  analysis_data_.prev_vio_optimization_flags_ = analysis_data_.last_vio_optimization_flags_;
+}
+
+void VIOManager::buildReconstructedView(const cv::Mat &img, cv::Mat &out, int level)
+{
+  out.release();
+  if (!visual_submap || !cam || !new_frame_) return;
+  if (img.empty()) return;
+
+  if (patch_pyrimid_level > 0 && level >= patch_pyrimid_level) level = patch_pyrimid_level - 1;
+  if (level < 0) level = 0;
+  const int scale = (1 << level);
+  const int out_rows = img.rows / scale;
+  const int out_cols = img.cols / scale;
+  if (out_rows <= 0 || out_cols <= 0) return;
+  out = cv::Mat::zeros(out_rows, out_cols, CV_8UC1);
+  if (visual_submap->voxel_points.empty()) return;
+
+  if (patch_size_half <= 0) return;
+  std::vector<float> patch(static_cast<size_t>(patch_size_total * (level + 1)));
+  const float *patch_level = patch.data() + patch_size_total * level;
+
+  for (const auto *vp : visual_submap->voxel_points)
+  {
+    if (vp == nullptr) continue;
+    V2D pc = new_frame_->w2c(vp->pos_);
+    const int u = static_cast<int>(pc[0]);
+    const int v = static_cast<int>(pc[1]);
+    const int u_ds = u / scale;
+    const int v_ds = v / scale;
+    if (u_ds < patch_size_half || v_ds < patch_size_half ||
+        u_ds + patch_size_half >= out.cols || v_ds + patch_size_half >= out.rows) continue;
+
+    getImagePatch(img, pc, patch.data(), level);
+    const int u0 = u_ds - patch_size_half;
+    const int v0 = v_ds - patch_size_half;
+    for (int dy = 0; dy < patch_size; ++dy)
+    {
+      const int row = v0 + dy;
+      uchar *dst = out.ptr<uchar>(row) + u0;
+      const float *src = patch_level + dy * patch_size;
+      for (int dx = 0; dx < patch_size; ++dx)
+      {
+        const int pix = static_cast<int>(src[dx] + 0.5f);
+        dst[dx] = static_cast<uchar>(std::min(255, std::max(0, pix)));
+      }
+    }
+  }
+}
+
 void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
 {
-  if (pg.size() <= 10) return;
+  int out_of_frame_generation = 0;
+  int null_normal_generation = 0;
+  const int pg_total = static_cast<int>(pg.size());
+  if (pg.size() <= 10) {
+    analysis_data_.last_discarded_visual_generation_proportion_ = 0.0f;
+    analysis_data_.last_added_visual_points_ = 0;
+    return;
+  }
 
   // double t0 = fast_livo::utils::getWTime();
+  double score_sum = 0.0;
+  float score_min = std::numeric_limits<float>::max();
+  float score_max = std::numeric_limits<float>::lowest();
+  int score_count = 0;
   for (int i = 0; i < pg.size(); i++)
   {
     if (pg[i].normal == V3D(0, 0, 0)) continue;
@@ -894,21 +1049,35 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
     V3D pt = pg[i].point_w;
     V2D pc(new_frame_->w2c(pt));
 
-    if (new_frame_->cam_->isInFrame(pc.cast<int>(), border)) // 20px is the patch size in the matcher
-    {
-      int index = static_cast<int>(pc[1] / grid_size) * grid_n_width + static_cast<int>(pc[0] / grid_size);
+    if (pg[i].normal == V3D(0, 0, 0)) {
+      ++null_normal_generation;
+      continue;
+    }
 
-      if (grid_num[index] != TYPE_MAP)
-      {
-        float cur_value = vk::shiTomasiScore(img, pc[0], pc[1]);
-        // if (cur_value < 5) continue;
-        if (cur_value > scan_value[index])
-        {
-          scan_value[index] = cur_value;
-          append_voxel_points[index] = pg[i];
-          grid_num[index] = TYPE_POINTCLOUD;
-        }
-      }
+    const bool in_frame = new_frame_->cam_->isInFrame(pc.cast<int>(), border);
+    if (!in_frame) {
+      ++out_of_frame_generation;
+      continue;
+    }
+
+    int index = static_cast<int>(pc[1] / grid_size) * grid_n_width + static_cast<int>(pc[0] / grid_size);
+
+    if (grid_num[index] == TYPE_MAP)
+    {
+      continue;
+    }
+
+    float cur_value = vk::shiTomasiScore(img, pc[0], pc[1], patch_size_half);
+    score_sum += cur_value;
+    if (cur_value < score_min) score_min = cur_value;
+    if (cur_value > score_max) score_max = cur_value;
+    ++score_count;
+    if (shitomasi_threshold_enabled && cur_value < min_shitomasi_score) continue;
+    if (cur_value > scan_value[index])
+    {
+      scan_value[index] = cur_value;
+      append_voxel_points[index] = pg[i];
+      grid_num[index] = TYPE_POINTCLOUD;
     }
   }
 
@@ -917,21 +1086,31 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
     V3D pt = visual_submap->add_from_voxel_map[j].point_w;
     V2D pc(new_frame_->w2c(pt));
 
-    if (new_frame_->cam_->isInFrame(pc.cast<int>(), border)) // 20px is the patch size in the matcher
+    if (!new_frame_->cam_->isInFrame(pc.cast<int>(), border)) // 20px is the patch size in the matcher
     {
-      int index = static_cast<int>(pc[1] / grid_size) * grid_n_width + static_cast<int>(pc[0] / grid_size);
-
-      if (grid_num[index] != TYPE_MAP)
-      {
-        float cur_value = vk::shiTomasiScore(img, pc[0], pc[1]);
-        if (cur_value > scan_value[index])
-        {
-          scan_value[index] = cur_value;
-          append_voxel_points[index] = visual_submap->add_from_voxel_map[j];
-          grid_num[index] = TYPE_POINTCLOUD;
-        }
-      }
+      continue;
     }
+
+    int index = static_cast<int>(pc[1] / grid_size) * grid_n_width + static_cast<int>(pc[0] / grid_size);
+
+    if (grid_num[index] == TYPE_MAP)
+    {
+      continue;
+    }
+
+    float cur_value = vk::shiTomasiScore(img, pc[0], pc[1], patch_size_half);
+    score_sum += cur_value;
+    if (cur_value < score_min) score_min = cur_value;
+    if (cur_value > score_max) score_max = cur_value;
+    ++score_count;
+    if (shitomasi_threshold_enabled && cur_value < min_shitomasi_score) continue;
+    if (cur_value > scan_value[index])
+    {
+      scan_value[index] = cur_value;
+      append_voxel_points[index] = visual_submap->add_from_voxel_map[j];
+      grid_num[index] = TYPE_POINTCLOUD;
+    }
+
   }
 
   // double t_b1 = fast_livo::utils::getWTime() - t0;
@@ -981,9 +1160,29 @@ void VIOManager::generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg)
     }
   }
 
+  if (score_count > 0)
+  {
+    analysis_data_.last_shitomasi_avg_ = static_cast<float>(score_sum / score_count);
+    analysis_data_.last_shitomasi_min_ = score_min;
+    analysis_data_.last_shitomasi_max_ = score_max;
+  }
+  else
+  {
+    analysis_data_.last_shitomasi_avg_ = 0.0f;
+    analysis_data_.last_shitomasi_min_ = 0.0f;
+    analysis_data_.last_shitomasi_max_ = 0.0f;
+  }
+
+  analysis_data_.last_discarded_visual_generation_null_normal_count_ = null_normal_generation;
+  analysis_data_.last_discarded_visual_generation_out_of_frame_count_ = out_of_frame_generation;
+  const int discarded_total = null_normal_generation + out_of_frame_generation;
+  analysis_data_.last_discarded_visual_generation_proportion_ =
+      (pg_total > 0) ? static_cast<float>(discarded_total) / static_cast<float>(pg_total) : 0.0f;
+
   // double t_b2 = fast_livo::utils::getWTime() - t0;
 
   spdlog::debug("[ VIO ] Append {:d} new visual map points", add);
+  analysis_data_.last_added_visual_points_ = add;
   // printf("pg.size: %d \n", pg.size());
   // printf("B1. : %.6lf \n", t_b1);
   // printf("B2. : %.6lf \n", t_b2);
@@ -1114,7 +1313,7 @@ void VIOManager::updateReferencePatch(const unordered_map<VOXEL_LOCATION, VoxelO
             if (normal_update < 0.0001 && pt->obs_.size() > 10)
             {
               pt->is_converged_ = true;
-              // visual_converged_point.push_back(pt);
+              visual_converged_point.push_back(pt);
             }
           }
         }
@@ -1483,9 +1682,9 @@ void VIOManager::precomputeReferencePatches(int level)
   has_ref_patch_cache = true;
 }
 
-void VIOManager::updateStateInverse(cv::Mat img, int level)
+int VIOManager::updateStateInverse(cv::Mat img, int level)
 {
-  if (total_points == 0) return;
+  if (total_points == 0) return 0;
   StatesGroup old_state = (*state);
   V2D pc;
   MD(1, 2) Jimg;
@@ -1506,8 +1705,11 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
   H_sub.resize(H_DIM, 6);
   H_sub.setZero();
 
+  int iterations_run = 0;
+  int used_features = 0;
   for (int iteration = 0; iteration < max_iterations; iteration++)
   {
+    ++iterations_run;
     double t1 = fast_livo::utils::getWTime();
     double count_outlier = 0;
     if (has_ref_patch_cache == false) precomputeReferencePatches(level);
@@ -1524,6 +1726,7 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
     for (int i = 0; i < total_points; i++)
     {
       float patch_error = 0.0;
+      const int meas_before = n_meas;
 
       const int scale = (1 << level);
 
@@ -1565,6 +1768,15 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
       }
       visual_submap->errors[i] = patch_error;
       error += patch_error;
+
+      if (n_meas > meas_before) {
+        ++used_features;
+        if (static_cast<size_t>(i) < analysis_data_.last_vio_optimization_flags_.size() &&
+            analysis_data_.last_vio_optimization_flags_[i] == 0) {
+          analysis_data_.last_vio_optimization_flags_[i] = 1;
+          analysis_data_.last_vio_optimization_points_.push_back(pt->pos_);
+        }
+      }
     }
 
     error = error / n_meas;
@@ -1603,11 +1815,16 @@ void VIOManager::updateStateInverse(cv::Mat img, int level)
 
     if (iteration == max_iterations || EKF_end) break; 
   }
+  if (level >= 0 && level < analysis_data_.last_esikf_feature_counts_per_level_.size()) {
+    analysis_data_.last_esikf_feature_counts_per_level_[level] = used_features;
+  }
+  return iterations_run;
 }
 
-void VIOManager::updateState(cv::Mat img, int level)
+int VIOManager::updateState(cv::Mat img, int level)
 {
-  if (total_points == 0) return;
+  if (total_points == 0) return 0;
+  
   StatesGroup old_state = (*state);
 
   VectorXd z;
@@ -1621,8 +1838,11 @@ void VIOManager::updateState(cv::Mat img, int level)
   H_sub.resize(H_DIM, 7);
   H_sub.setZero();
 
+  int analysis_iterations_run = 0;
+  int analysis_used_features = 0;
   for (int iteration = 0; iteration < max_iterations; iteration++)
   {
+    ++analysis_iterations_run;
     double t1 = fast_livo::utils::getWTime();
 
     M3D Rwi(state->rot_end);
@@ -1649,6 +1869,7 @@ void VIOManager::updateState(cv::Mat img, int level)
       MD(1, 3) Jdphi, Jdp, JdR, Jdt;
 
       float patch_error = 0.0;
+      const int analysis_meas_before = n_meas;
       int search_level = visual_submap->search_levels[i];
       int pyramid_level = level + search_level;
       int scale = (1 << pyramid_level);
@@ -1719,6 +1940,15 @@ void VIOManager::updateState(cv::Mat img, int level)
       }
       visual_submap->errors[i] = patch_error;
       error += patch_error;
+
+      if (n_meas > analysis_meas_before) {
+        ++analysis_used_features;
+        if (static_cast<size_t>(i) < analysis_data_.last_vio_optimization_flags_.size() &&
+            analysis_data_.last_vio_optimization_flags_[i] == 0) {
+          analysis_data_.last_vio_optimization_flags_[i] = 1;
+          analysis_data_.last_vio_optimization_points_.push_back(pt->pos_);
+        }
+      }
     }
 
     error = error / n_meas;
@@ -1772,6 +2002,10 @@ void VIOManager::updateState(cv::Mat img, int level)
 
     if (iteration == max_iterations || EKF_end) break;
   }
+  if (level >= 0 && level < analysis_data_.last_esikf_feature_counts_per_level_.size()) {
+    analysis_data_.last_esikf_feature_counts_per_level_[level] = analysis_used_features;
+  }
+  return analysis_iterations_run;
   // if (state->inv_expo_time < 0.0)  {ROS_ERROR("reset expo time!!!!!!!!!!\n"); state->inv_expo_time = 0.0;}
 }
 
@@ -1792,8 +2026,12 @@ void VIOManager::updateFrameState(StatesGroup state)
 
 void VIOManager::plotTrackedPoints()
 {
+  analysis_data_.last_vio_inlier_points_.clear();
+  analysis_data_.last_vio_outlier_points_.clear();
   int total_points = visual_submap->voxel_points.size();
   if (total_points == 0) return;
+  analysis_data_.last_vio_inlier_points_.reserve(total_points);
+  analysis_data_.last_vio_outlier_points_.reserve(total_points);
   // int inlier_count = 0;
   // for (int i = 0; i < img_cp.rows / grid_size; i++)
   // {
@@ -1819,11 +2057,23 @@ void VIOManager::plotTrackedPoints()
     if (visual_submap->errors[i] <= visual_submap->propa_errors[i])
     {
       // inlier_count++;
-      cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 7, cv::Scalar(0, 255, 0), -1, 8); // Green Sparse Align tracked
+      if (rgb_output_en_ && !img_cp.empty()) {
+        cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 7, cv::Scalar(0, 255, 0), -1, 8);
+      }
+      analysis_data_.last_vio_inlier_points_.push_back(pt->pos_);
     }
     else
     {
-      cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 7, cv::Scalar(255, 0, 0), -1, 8); // Blue Sparse Align tracked
+      if (rgb_output_en_ && !img_cp.empty()) {
+        cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 7, cv::Scalar(255, 0, 0), -1, 8);
+      }
+      analysis_data_.last_vio_outlier_points_.push_back(pt->pos_);
+    }
+    if (static_cast<size_t>(i) < analysis_data_.last_vio_optimization_flags_.size() &&
+        analysis_data_.last_vio_optimization_flags_[i] == 1) {
+      if (rgb_output_en_ && !img_cp.empty()) {
+        cv::circle(img_cp, cv::Point2f(pc[0], pc[1]), 9, cv::Scalar(0, 255, 255), 2, 8);
+      }
     }
   }
   // std::string text = std::to_string(inlier_count) + " " + std::to_string(total_points);
@@ -1885,7 +2135,11 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
     cv::resize(img, img, cv::Size(img.cols * image_resize_factor, img.rows * image_resize_factor), 0, 0, CV_INTER_LINEAR);
   }
   img_rgb = img.clone();
-  img_cp = img.clone();
+  if (rgb_output_en_) {
+    img_cp = img.clone();
+  } else {
+    img_cp.release();
+  }
   // img_test = img.clone();
 
   if (img.channels() == 3) cv::cvtColor(img, img, CV_BGR2GRAY);
@@ -1902,16 +2156,21 @@ void VIOManager::processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unor
   double t2 = fast_livo::utils::getWTime();
 
   computeJacobianAndUpdateEKF(img);
+  updateCommonTrackedPoints();
+  updateVioStatistics();
 
   double t3 = fast_livo::utils::getWTime();
 
   generateVisualMapPoints(img, pg);
 
   double t4 = fast_livo::utils::getWTime();
-  
-  plotTrackedPoints();
 
   if (plot_flag) projectPatchFromRefToCur(feat_map);
+
+  if (rgb_output_en_) {
+    plotTrackedPoints();
+    utils::overlayBorder(img_cp, border, 0.35);
+  }
 
   double t5 = fast_livo::utils::getWTime();
 

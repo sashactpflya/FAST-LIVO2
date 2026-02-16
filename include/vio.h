@@ -82,6 +82,33 @@ public:
   }
 };
 
+struct VioAnalysisData
+{
+  std::vector<int> last_esikf_iterations_per_level_;
+  std::vector<int> last_esikf_feature_counts_per_level_;
+  int last_inlier_count_ = 0;
+  int last_outlier_count_ = 0;
+  int last_raycast_retrieved_count_ = 0;
+  int last_added_visual_points_ = 0;
+  int last_common_tracked_points_ = 0;
+  int last_depth_discontinuity_rejects_ = 0;
+  float last_shitomasi_avg_ = 0.0f;
+  float last_shitomasi_min_ = 0.0f;
+  float last_shitomasi_max_ = 0.0f;
+  int last_discarded_visual_generation_null_normal_count_ = 0;
+  int last_discarded_visual_generation_out_of_frame_count_ = 0;
+  float last_discarded_visual_generation_proportion_ = 0.0f;
+  cv::Mat depth_discontinuity_depth_map_;
+  cv::Mat depth_discontinuity_overlay_;
+  std::vector<V3D> last_vio_inlier_points_;
+  std::vector<V3D> last_vio_outlier_points_;
+  std::vector<V3D> last_vio_optimization_points_;
+  std::vector<uint8_t> last_vio_optimization_flags_;
+  std::vector<uint8_t> prev_vio_optimization_flags_;
+  int last_converged_point_count_ = 0;
+  std::vector<V3D> last_converged_points_;
+};
+
 class VIOManager
 {
 public:
@@ -108,7 +135,8 @@ public:
   double image_resize_factor;
   double fx, fy, cx, cy;
   int patch_pyrimid_level, patch_size, patch_size_total, patch_size_half, border, warp_len;
-  int max_iterations, total_points;
+  int max_iterations;
+  int total_points; ///< total number of points in the visual sparse map
 
   double img_point_cov, outlier_threshold;
   double ncc_threshold; ///< Rejection threshold with NCC
@@ -123,7 +151,7 @@ public:
   double orientation_check_cos_threshold;
   
   SubSparseMap *visual_submap;
-  std::vector<std::vector<V3D>> rays_with_sample_points;
+  std::vector<std::vector<V3D>> rays_with_sample_points; ///< Precomputed rays coordinate for raycasting
 
   double compute_jacobian_time, update_ekf_time;
   double ave_total = 0;
@@ -132,6 +160,7 @@ public:
 
   int frame_count = 0;
   bool plot_flag;
+  bool rgb_output_en_ = true;
 
   Eigen::Matrix<double, DIM_STATE, DIM_STATE> G, H_T_H;
   MatrixXd K, H_sub_inv;
@@ -154,12 +183,13 @@ public:
 
   VIOManager();
   ~VIOManager();
-  void updateStateInverse(cv::Mat img, int level);
-  void updateState(cv::Mat img, int level);
+  int updateStateInverse(cv::Mat img, int level);
+  int updateState(cv::Mat img, int level);
   void processFrame(cv::Mat &img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &feat_map, double img_time);
   void retrieveFromVisualSparseMap(cv::Mat img, vector<pointWithVar> &pg, const unordered_map<VOXEL_LOCATION, VoxelOctoTree *> &plane_map);
   void generateVisualMapPoints(cv::Mat img, vector<pointWithVar> &pg);
-  void setImuToLidarExtrinsic(const V3D &transl, const M3D &rot);
+  void setRgbOutputEnabled(bool enabled) { rgb_output_en_ = enabled; }
+  void setLidarToImuExtrinsic(const V3D &T_imu_lidar, const M3D &R_imu_lidar);
   void setLidarToCameraExtrinsic(vector<double> &R, vector<double> &P);
   void setLidarToCameraExtrinsic(const M3D &R, const V3D &P);
   void initializeVIO();
@@ -185,6 +215,11 @@ public:
   double calculateNCC(float *ref_patch, float *cur_patch, int patch_size);
   int getBestSearchLevel(const Matrix2d &A_cur_ref, const int max_level);
   V3F getInterpolatedPixel(cv::Mat img, V2D pc);
+  const VioAnalysisData &getVioAnalysisData() const { return analysis_data_; }
+  const map_type<VOXEL_LOCATION, int> &getVisibleVoxelMap() const { return sub_feat_map; }
+  void setGenerateReconstructedView(bool enable) { generate_reconstructed_view_ = enable; }
+  void setGenerateSparseDepthMap(bool enable) { generate_sparse_depth_map_ = enable; }
+  void setDepthDiscontinuityOverlayOnDepthMap(bool enable) { overlay_depth_discontinuity_on_depth_map_ = enable; }
   void setVoxelSize(double size) { voxel_size_ = size; }
   double getVoxelSize() const { return voxel_size_; }
   
@@ -193,11 +228,21 @@ public:
   // deque<VisualPoint *> sub_map_ray;
   // deque<VisualPoint *> sub_map_ray_fov;
   // deque<VisualPoint *> visual_sub_map_cur;
-  // deque<VisualPoint *> visual_converged_point;
+  deque<VisualPoint *> visual_converged_point;
   // std::vector<std::vector<V3D>> sample_points;
 
   // PointCloudXYZI::Ptr pg_down;
   // pcl::VoxelGrid<PointType> downSizeFilter;
+
+  bool generate_reconstructed_view_ = false;
+  bool generate_sparse_depth_map_ = false;
+  bool overlay_depth_discontinuity_on_depth_map_ = false;
+  VioAnalysisData analysis_data_;
+
+  void updateVioStatistics();
+  void updateCommonTrackedPoints();
+  void buildReconstructedView(const cv::Mat &img, cv::Mat &out, int level);
+
 private:
   double voxel_size_ = 0.5; ///< Voxel size of the visual sparse map
 };

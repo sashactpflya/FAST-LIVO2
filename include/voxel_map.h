@@ -241,6 +241,8 @@ public:
   void build_single_residual(pointWithVar &pv, const VoxelOctoTree *current_octo, const int current_layer, bool &is_sucess, double &prob,
                              PointToPlane &single_ptpl);
 
+  int getLastEsikfIterations() const { return last_esikf_iterations_; }
+
   void pubVoxelMap();
 
   void mapSliding();
@@ -255,6 +257,8 @@ private:
   void CalcVectQuation(const Eigen::Vector3d &x_vec, const Eigen::Vector3d &y_vec, const Eigen::Vector3d &z_vec, geometry_msgs::msg::Quaternion &q);
 
   void mapJet(double v, double vmin, double vmax, uint8_t &r, uint8_t &g, uint8_t &b);
+
+  int last_esikf_iterations_ = 0;
 };
 typedef std::shared_ptr<VoxelMapManager> VoxelMapManagerPtr;
 
